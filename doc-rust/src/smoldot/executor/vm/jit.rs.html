@@ -1,0 +1,1696 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `src/executor/vm/jit.rs`."><meta name="keywords" content="rust, rustlang, rust-lang"><title>jit.rs - source</title><link rel="preload" as="font" type="font/woff2" crossorigin href="../../../../SourceSerif4-Regular.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../../../FiraSans-Regular.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../../../FiraSans-Medium.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../../../SourceCodePro-Regular.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../../../SourceSerif4-Bold.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../../../SourceCodePro-Semibold.ttf.woff2"><link rel="stylesheet" href="../../../../normalize.css"><link rel="stylesheet" href="../../../../rustdoc.css" id="mainThemeStyle"><link rel="stylesheet" href="../../../../ayu.css" disabled><link rel="stylesheet" href="../../../../dark.css" disabled><link rel="stylesheet" href="../../../../light.css" id="themeStyle"><script id="default-settings" ></script><script src="../../../../storage.js"></script><script defer src="../../../../source-script.js"></script><script defer src="../../../../source-files.js"></script><script defer src="../../../../main.js"></script><noscript><link rel="stylesheet" href="../../../../noscript.css"></noscript><link rel="alternate icon" type="image/png" href="../../../../favicon-16x16.png"><link rel="alternate icon" type="image/png" href="../../../../favicon-32x32.png"><link rel="icon" type="image/svg+xml" href="../../../../favicon.svg"></head><body class="rustdoc source"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="mobile-topbar"><button class="sidebar-menu-toggle">&#9776;</button><a class="sidebar-logo" href="../../../../smoldot/index.html"><div class="logo-container"><img class="rust-logo" src="../../../../rust-logo.svg" alt="logo"></div></a><h2 class="location"></h2></nav><nav class="sidebar"><a class="sidebar-logo" href="../../../../smoldot/index.html"><div class="logo-container"><img class="rust-logo" src="../../../../rust-logo.svg" alt="logo"></div></a></nav><main><div class="width-limiter"><div class="sub-container"><a class="sub-logo-container" href="../../../../smoldot/index.html"><img class="rust-logo" src="../../../../rust-logo.svg" alt="logo"></a><nav class="sub"><form class="search-form"><div class="search-container"><span></span><input class="search-input" name="search" autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"><div id="help-button" title="help" tabindex="-1"><button type="button">?</button></div><div id="settings-menu" tabindex="-1"><a href="../../../../settings.html" title="settings"><img width="22" height="22" alt="Change settings" src="../../../../wheel.svg"></a></div></div></form></nav></div><section id="main-content" class="content"><div class="example-wrap"><pre class="line-numbers"><span id="1">1</span>
+<span id="2">2</span>
+<span id="3">3</span>
+<span id="4">4</span>
+<span id="5">5</span>
+<span id="6">6</span>
+<span id="7">7</span>
+<span id="8">8</span>
+<span id="9">9</span>
+<span id="10">10</span>
+<span id="11">11</span>
+<span id="12">12</span>
+<span id="13">13</span>
+<span id="14">14</span>
+<span id="15">15</span>
+<span id="16">16</span>
+<span id="17">17</span>
+<span id="18">18</span>
+<span id="19">19</span>
+<span id="20">20</span>
+<span id="21">21</span>
+<span id="22">22</span>
+<span id="23">23</span>
+<span id="24">24</span>
+<span id="25">25</span>
+<span id="26">26</span>
+<span id="27">27</span>
+<span id="28">28</span>
+<span id="29">29</span>
+<span id="30">30</span>
+<span id="31">31</span>
+<span id="32">32</span>
+<span id="33">33</span>
+<span id="34">34</span>
+<span id="35">35</span>
+<span id="36">36</span>
+<span id="37">37</span>
+<span id="38">38</span>
+<span id="39">39</span>
+<span id="40">40</span>
+<span id="41">41</span>
+<span id="42">42</span>
+<span id="43">43</span>
+<span id="44">44</span>
+<span id="45">45</span>
+<span id="46">46</span>
+<span id="47">47</span>
+<span id="48">48</span>
+<span id="49">49</span>
+<span id="50">50</span>
+<span id="51">51</span>
+<span id="52">52</span>
+<span id="53">53</span>
+<span id="54">54</span>
+<span id="55">55</span>
+<span id="56">56</span>
+<span id="57">57</span>
+<span id="58">58</span>
+<span id="59">59</span>
+<span id="60">60</span>
+<span id="61">61</span>
+<span id="62">62</span>
+<span id="63">63</span>
+<span id="64">64</span>
+<span id="65">65</span>
+<span id="66">66</span>
+<span id="67">67</span>
+<span id="68">68</span>
+<span id="69">69</span>
+<span id="70">70</span>
+<span id="71">71</span>
+<span id="72">72</span>
+<span id="73">73</span>
+<span id="74">74</span>
+<span id="75">75</span>
+<span id="76">76</span>
+<span id="77">77</span>
+<span id="78">78</span>
+<span id="79">79</span>
+<span id="80">80</span>
+<span id="81">81</span>
+<span id="82">82</span>
+<span id="83">83</span>
+<span id="84">84</span>
+<span id="85">85</span>
+<span id="86">86</span>
+<span id="87">87</span>
+<span id="88">88</span>
+<span id="89">89</span>
+<span id="90">90</span>
+<span id="91">91</span>
+<span id="92">92</span>
+<span id="93">93</span>
+<span id="94">94</span>
+<span id="95">95</span>
+<span id="96">96</span>
+<span id="97">97</span>
+<span id="98">98</span>
+<span id="99">99</span>
+<span id="100">100</span>
+<span id="101">101</span>
+<span id="102">102</span>
+<span id="103">103</span>
+<span id="104">104</span>
+<span id="105">105</span>
+<span id="106">106</span>
+<span id="107">107</span>
+<span id="108">108</span>
+<span id="109">109</span>
+<span id="110">110</span>
+<span id="111">111</span>
+<span id="112">112</span>
+<span id="113">113</span>
+<span id="114">114</span>
+<span id="115">115</span>
+<span id="116">116</span>
+<span id="117">117</span>
+<span id="118">118</span>
+<span id="119">119</span>
+<span id="120">120</span>
+<span id="121">121</span>
+<span id="122">122</span>
+<span id="123">123</span>
+<span id="124">124</span>
+<span id="125">125</span>
+<span id="126">126</span>
+<span id="127">127</span>
+<span id="128">128</span>
+<span id="129">129</span>
+<span id="130">130</span>
+<span id="131">131</span>
+<span id="132">132</span>
+<span id="133">133</span>
+<span id="134">134</span>
+<span id="135">135</span>
+<span id="136">136</span>
+<span id="137">137</span>
+<span id="138">138</span>
+<span id="139">139</span>
+<span id="140">140</span>
+<span id="141">141</span>
+<span id="142">142</span>
+<span id="143">143</span>
+<span id="144">144</span>
+<span id="145">145</span>
+<span id="146">146</span>
+<span id="147">147</span>
+<span id="148">148</span>
+<span id="149">149</span>
+<span id="150">150</span>
+<span id="151">151</span>
+<span id="152">152</span>
+<span id="153">153</span>
+<span id="154">154</span>
+<span id="155">155</span>
+<span id="156">156</span>
+<span id="157">157</span>
+<span id="158">158</span>
+<span id="159">159</span>
+<span id="160">160</span>
+<span id="161">161</span>
+<span id="162">162</span>
+<span id="163">163</span>
+<span id="164">164</span>
+<span id="165">165</span>
+<span id="166">166</span>
+<span id="167">167</span>
+<span id="168">168</span>
+<span id="169">169</span>
+<span id="170">170</span>
+<span id="171">171</span>
+<span id="172">172</span>
+<span id="173">173</span>
+<span id="174">174</span>
+<span id="175">175</span>
+<span id="176">176</span>
+<span id="177">177</span>
+<span id="178">178</span>
+<span id="179">179</span>
+<span id="180">180</span>
+<span id="181">181</span>
+<span id="182">182</span>
+<span id="183">183</span>
+<span id="184">184</span>
+<span id="185">185</span>
+<span id="186">186</span>
+<span id="187">187</span>
+<span id="188">188</span>
+<span id="189">189</span>
+<span id="190">190</span>
+<span id="191">191</span>
+<span id="192">192</span>
+<span id="193">193</span>
+<span id="194">194</span>
+<span id="195">195</span>
+<span id="196">196</span>
+<span id="197">197</span>
+<span id="198">198</span>
+<span id="199">199</span>
+<span id="200">200</span>
+<span id="201">201</span>
+<span id="202">202</span>
+<span id="203">203</span>
+<span id="204">204</span>
+<span id="205">205</span>
+<span id="206">206</span>
+<span id="207">207</span>
+<span id="208">208</span>
+<span id="209">209</span>
+<span id="210">210</span>
+<span id="211">211</span>
+<span id="212">212</span>
+<span id="213">213</span>
+<span id="214">214</span>
+<span id="215">215</span>
+<span id="216">216</span>
+<span id="217">217</span>
+<span id="218">218</span>
+<span id="219">219</span>
+<span id="220">220</span>
+<span id="221">221</span>
+<span id="222">222</span>
+<span id="223">223</span>
+<span id="224">224</span>
+<span id="225">225</span>
+<span id="226">226</span>
+<span id="227">227</span>
+<span id="228">228</span>
+<span id="229">229</span>
+<span id="230">230</span>
+<span id="231">231</span>
+<span id="232">232</span>
+<span id="233">233</span>
+<span id="234">234</span>
+<span id="235">235</span>
+<span id="236">236</span>
+<span id="237">237</span>
+<span id="238">238</span>
+<span id="239">239</span>
+<span id="240">240</span>
+<span id="241">241</span>
+<span id="242">242</span>
+<span id="243">243</span>
+<span id="244">244</span>
+<span id="245">245</span>
+<span id="246">246</span>
+<span id="247">247</span>
+<span id="248">248</span>
+<span id="249">249</span>
+<span id="250">250</span>
+<span id="251">251</span>
+<span id="252">252</span>
+<span id="253">253</span>
+<span id="254">254</span>
+<span id="255">255</span>
+<span id="256">256</span>
+<span id="257">257</span>
+<span id="258">258</span>
+<span id="259">259</span>
+<span id="260">260</span>
+<span id="261">261</span>
+<span id="262">262</span>
+<span id="263">263</span>
+<span id="264">264</span>
+<span id="265">265</span>
+<span id="266">266</span>
+<span id="267">267</span>
+<span id="268">268</span>
+<span id="269">269</span>
+<span id="270">270</span>
+<span id="271">271</span>
+<span id="272">272</span>
+<span id="273">273</span>
+<span id="274">274</span>
+<span id="275">275</span>
+<span id="276">276</span>
+<span id="277">277</span>
+<span id="278">278</span>
+<span id="279">279</span>
+<span id="280">280</span>
+<span id="281">281</span>
+<span id="282">282</span>
+<span id="283">283</span>
+<span id="284">284</span>
+<span id="285">285</span>
+<span id="286">286</span>
+<span id="287">287</span>
+<span id="288">288</span>
+<span id="289">289</span>
+<span id="290">290</span>
+<span id="291">291</span>
+<span id="292">292</span>
+<span id="293">293</span>
+<span id="294">294</span>
+<span id="295">295</span>
+<span id="296">296</span>
+<span id="297">297</span>
+<span id="298">298</span>
+<span id="299">299</span>
+<span id="300">300</span>
+<span id="301">301</span>
+<span id="302">302</span>
+<span id="303">303</span>
+<span id="304">304</span>
+<span id="305">305</span>
+<span id="306">306</span>
+<span id="307">307</span>
+<span id="308">308</span>
+<span id="309">309</span>
+<span id="310">310</span>
+<span id="311">311</span>
+<span id="312">312</span>
+<span id="313">313</span>
+<span id="314">314</span>
+<span id="315">315</span>
+<span id="316">316</span>
+<span id="317">317</span>
+<span id="318">318</span>
+<span id="319">319</span>
+<span id="320">320</span>
+<span id="321">321</span>
+<span id="322">322</span>
+<span id="323">323</span>
+<span id="324">324</span>
+<span id="325">325</span>
+<span id="326">326</span>
+<span id="327">327</span>
+<span id="328">328</span>
+<span id="329">329</span>
+<span id="330">330</span>
+<span id="331">331</span>
+<span id="332">332</span>
+<span id="333">333</span>
+<span id="334">334</span>
+<span id="335">335</span>
+<span id="336">336</span>
+<span id="337">337</span>
+<span id="338">338</span>
+<span id="339">339</span>
+<span id="340">340</span>
+<span id="341">341</span>
+<span id="342">342</span>
+<span id="343">343</span>
+<span id="344">344</span>
+<span id="345">345</span>
+<span id="346">346</span>
+<span id="347">347</span>
+<span id="348">348</span>
+<span id="349">349</span>
+<span id="350">350</span>
+<span id="351">351</span>
+<span id="352">352</span>
+<span id="353">353</span>
+<span id="354">354</span>
+<span id="355">355</span>
+<span id="356">356</span>
+<span id="357">357</span>
+<span id="358">358</span>
+<span id="359">359</span>
+<span id="360">360</span>
+<span id="361">361</span>
+<span id="362">362</span>
+<span id="363">363</span>
+<span id="364">364</span>
+<span id="365">365</span>
+<span id="366">366</span>
+<span id="367">367</span>
+<span id="368">368</span>
+<span id="369">369</span>
+<span id="370">370</span>
+<span id="371">371</span>
+<span id="372">372</span>
+<span id="373">373</span>
+<span id="374">374</span>
+<span id="375">375</span>
+<span id="376">376</span>
+<span id="377">377</span>
+<span id="378">378</span>
+<span id="379">379</span>
+<span id="380">380</span>
+<span id="381">381</span>
+<span id="382">382</span>
+<span id="383">383</span>
+<span id="384">384</span>
+<span id="385">385</span>
+<span id="386">386</span>
+<span id="387">387</span>
+<span id="388">388</span>
+<span id="389">389</span>
+<span id="390">390</span>
+<span id="391">391</span>
+<span id="392">392</span>
+<span id="393">393</span>
+<span id="394">394</span>
+<span id="395">395</span>
+<span id="396">396</span>
+<span id="397">397</span>
+<span id="398">398</span>
+<span id="399">399</span>
+<span id="400">400</span>
+<span id="401">401</span>
+<span id="402">402</span>
+<span id="403">403</span>
+<span id="404">404</span>
+<span id="405">405</span>
+<span id="406">406</span>
+<span id="407">407</span>
+<span id="408">408</span>
+<span id="409">409</span>
+<span id="410">410</span>
+<span id="411">411</span>
+<span id="412">412</span>
+<span id="413">413</span>
+<span id="414">414</span>
+<span id="415">415</span>
+<span id="416">416</span>
+<span id="417">417</span>
+<span id="418">418</span>
+<span id="419">419</span>
+<span id="420">420</span>
+<span id="421">421</span>
+<span id="422">422</span>
+<span id="423">423</span>
+<span id="424">424</span>
+<span id="425">425</span>
+<span id="426">426</span>
+<span id="427">427</span>
+<span id="428">428</span>
+<span id="429">429</span>
+<span id="430">430</span>
+<span id="431">431</span>
+<span id="432">432</span>
+<span id="433">433</span>
+<span id="434">434</span>
+<span id="435">435</span>
+<span id="436">436</span>
+<span id="437">437</span>
+<span id="438">438</span>
+<span id="439">439</span>
+<span id="440">440</span>
+<span id="441">441</span>
+<span id="442">442</span>
+<span id="443">443</span>
+<span id="444">444</span>
+<span id="445">445</span>
+<span id="446">446</span>
+<span id="447">447</span>
+<span id="448">448</span>
+<span id="449">449</span>
+<span id="450">450</span>
+<span id="451">451</span>
+<span id="452">452</span>
+<span id="453">453</span>
+<span id="454">454</span>
+<span id="455">455</span>
+<span id="456">456</span>
+<span id="457">457</span>
+<span id="458">458</span>
+<span id="459">459</span>
+<span id="460">460</span>
+<span id="461">461</span>
+<span id="462">462</span>
+<span id="463">463</span>
+<span id="464">464</span>
+<span id="465">465</span>
+<span id="466">466</span>
+<span id="467">467</span>
+<span id="468">468</span>
+<span id="469">469</span>
+<span id="470">470</span>
+<span id="471">471</span>
+<span id="472">472</span>
+<span id="473">473</span>
+<span id="474">474</span>
+<span id="475">475</span>
+<span id="476">476</span>
+<span id="477">477</span>
+<span id="478">478</span>
+<span id="479">479</span>
+<span id="480">480</span>
+<span id="481">481</span>
+<span id="482">482</span>
+<span id="483">483</span>
+<span id="484">484</span>
+<span id="485">485</span>
+<span id="486">486</span>
+<span id="487">487</span>
+<span id="488">488</span>
+<span id="489">489</span>
+<span id="490">490</span>
+<span id="491">491</span>
+<span id="492">492</span>
+<span id="493">493</span>
+<span id="494">494</span>
+<span id="495">495</span>
+<span id="496">496</span>
+<span id="497">497</span>
+<span id="498">498</span>
+<span id="499">499</span>
+<span id="500">500</span>
+<span id="501">501</span>
+<span id="502">502</span>
+<span id="503">503</span>
+<span id="504">504</span>
+<span id="505">505</span>
+<span id="506">506</span>
+<span id="507">507</span>
+<span id="508">508</span>
+<span id="509">509</span>
+<span id="510">510</span>
+<span id="511">511</span>
+<span id="512">512</span>
+<span id="513">513</span>
+<span id="514">514</span>
+<span id="515">515</span>
+<span id="516">516</span>
+<span id="517">517</span>
+<span id="518">518</span>
+<span id="519">519</span>
+<span id="520">520</span>
+<span id="521">521</span>
+<span id="522">522</span>
+<span id="523">523</span>
+<span id="524">524</span>
+<span id="525">525</span>
+<span id="526">526</span>
+<span id="527">527</span>
+<span id="528">528</span>
+<span id="529">529</span>
+<span id="530">530</span>
+<span id="531">531</span>
+<span id="532">532</span>
+<span id="533">533</span>
+<span id="534">534</span>
+<span id="535">535</span>
+<span id="536">536</span>
+<span id="537">537</span>
+<span id="538">538</span>
+<span id="539">539</span>
+<span id="540">540</span>
+<span id="541">541</span>
+<span id="542">542</span>
+<span id="543">543</span>
+<span id="544">544</span>
+<span id="545">545</span>
+<span id="546">546</span>
+<span id="547">547</span>
+<span id="548">548</span>
+<span id="549">549</span>
+<span id="550">550</span>
+<span id="551">551</span>
+<span id="552">552</span>
+<span id="553">553</span>
+<span id="554">554</span>
+<span id="555">555</span>
+<span id="556">556</span>
+<span id="557">557</span>
+<span id="558">558</span>
+<span id="559">559</span>
+<span id="560">560</span>
+<span id="561">561</span>
+<span id="562">562</span>
+<span id="563">563</span>
+<span id="564">564</span>
+<span id="565">565</span>
+<span id="566">566</span>
+<span id="567">567</span>
+<span id="568">568</span>
+<span id="569">569</span>
+<span id="570">570</span>
+<span id="571">571</span>
+<span id="572">572</span>
+<span id="573">573</span>
+<span id="574">574</span>
+<span id="575">575</span>
+<span id="576">576</span>
+<span id="577">577</span>
+<span id="578">578</span>
+<span id="579">579</span>
+<span id="580">580</span>
+<span id="581">581</span>
+<span id="582">582</span>
+<span id="583">583</span>
+<span id="584">584</span>
+<span id="585">585</span>
+<span id="586">586</span>
+<span id="587">587</span>
+<span id="588">588</span>
+<span id="589">589</span>
+<span id="590">590</span>
+<span id="591">591</span>
+<span id="592">592</span>
+<span id="593">593</span>
+<span id="594">594</span>
+<span id="595">595</span>
+<span id="596">596</span>
+<span id="597">597</span>
+<span id="598">598</span>
+<span id="599">599</span>
+<span id="600">600</span>
+<span id="601">601</span>
+<span id="602">602</span>
+<span id="603">603</span>
+<span id="604">604</span>
+<span id="605">605</span>
+<span id="606">606</span>
+<span id="607">607</span>
+<span id="608">608</span>
+<span id="609">609</span>
+<span id="610">610</span>
+<span id="611">611</span>
+<span id="612">612</span>
+<span id="613">613</span>
+<span id="614">614</span>
+<span id="615">615</span>
+<span id="616">616</span>
+<span id="617">617</span>
+<span id="618">618</span>
+<span id="619">619</span>
+<span id="620">620</span>
+<span id="621">621</span>
+<span id="622">622</span>
+<span id="623">623</span>
+<span id="624">624</span>
+<span id="625">625</span>
+<span id="626">626</span>
+<span id="627">627</span>
+<span id="628">628</span>
+<span id="629">629</span>
+<span id="630">630</span>
+<span id="631">631</span>
+<span id="632">632</span>
+<span id="633">633</span>
+<span id="634">634</span>
+<span id="635">635</span>
+<span id="636">636</span>
+<span id="637">637</span>
+<span id="638">638</span>
+<span id="639">639</span>
+<span id="640">640</span>
+<span id="641">641</span>
+<span id="642">642</span>
+<span id="643">643</span>
+<span id="644">644</span>
+<span id="645">645</span>
+<span id="646">646</span>
+<span id="647">647</span>
+<span id="648">648</span>
+<span id="649">649</span>
+<span id="650">650</span>
+<span id="651">651</span>
+<span id="652">652</span>
+<span id="653">653</span>
+<span id="654">654</span>
+<span id="655">655</span>
+<span id="656">656</span>
+<span id="657">657</span>
+<span id="658">658</span>
+<span id="659">659</span>
+<span id="660">660</span>
+<span id="661">661</span>
+<span id="662">662</span>
+<span id="663">663</span>
+<span id="664">664</span>
+<span id="665">665</span>
+<span id="666">666</span>
+<span id="667">667</span>
+<span id="668">668</span>
+<span id="669">669</span>
+<span id="670">670</span>
+<span id="671">671</span>
+<span id="672">672</span>
+<span id="673">673</span>
+<span id="674">674</span>
+<span id="675">675</span>
+<span id="676">676</span>
+<span id="677">677</span>
+<span id="678">678</span>
+<span id="679">679</span>
+<span id="680">680</span>
+<span id="681">681</span>
+<span id="682">682</span>
+<span id="683">683</span>
+<span id="684">684</span>
+<span id="685">685</span>
+<span id="686">686</span>
+<span id="687">687</span>
+<span id="688">688</span>
+<span id="689">689</span>
+<span id="690">690</span>
+<span id="691">691</span>
+<span id="692">692</span>
+<span id="693">693</span>
+<span id="694">694</span>
+<span id="695">695</span>
+<span id="696">696</span>
+<span id="697">697</span>
+<span id="698">698</span>
+<span id="699">699</span>
+<span id="700">700</span>
+<span id="701">701</span>
+<span id="702">702</span>
+<span id="703">703</span>
+<span id="704">704</span>
+<span id="705">705</span>
+<span id="706">706</span>
+<span id="707">707</span>
+<span id="708">708</span>
+<span id="709">709</span>
+<span id="710">710</span>
+<span id="711">711</span>
+<span id="712">712</span>
+<span id="713">713</span>
+<span id="714">714</span>
+<span id="715">715</span>
+<span id="716">716</span>
+<span id="717">717</span>
+<span id="718">718</span>
+<span id="719">719</span>
+<span id="720">720</span>
+<span id="721">721</span>
+<span id="722">722</span>
+<span id="723">723</span>
+<span id="724">724</span>
+<span id="725">725</span>
+<span id="726">726</span>
+<span id="727">727</span>
+<span id="728">728</span>
+<span id="729">729</span>
+<span id="730">730</span>
+<span id="731">731</span>
+<span id="732">732</span>
+<span id="733">733</span>
+<span id="734">734</span>
+<span id="735">735</span>
+<span id="736">736</span>
+<span id="737">737</span>
+<span id="738">738</span>
+<span id="739">739</span>
+<span id="740">740</span>
+<span id="741">741</span>
+<span id="742">742</span>
+<span id="743">743</span>
+<span id="744">744</span>
+<span id="745">745</span>
+<span id="746">746</span>
+<span id="747">747</span>
+<span id="748">748</span>
+<span id="749">749</span>
+<span id="750">750</span>
+<span id="751">751</span>
+<span id="752">752</span>
+<span id="753">753</span>
+<span id="754">754</span>
+<span id="755">755</span>
+<span id="756">756</span>
+<span id="757">757</span>
+<span id="758">758</span>
+<span id="759">759</span>
+<span id="760">760</span>
+<span id="761">761</span>
+<span id="762">762</span>
+<span id="763">763</span>
+<span id="764">764</span>
+<span id="765">765</span>
+<span id="766">766</span>
+<span id="767">767</span>
+<span id="768">768</span>
+<span id="769">769</span>
+<span id="770">770</span>
+<span id="771">771</span>
+<span id="772">772</span>
+<span id="773">773</span>
+<span id="774">774</span>
+<span id="775">775</span>
+<span id="776">776</span>
+<span id="777">777</span>
+<span id="778">778</span>
+<span id="779">779</span>
+<span id="780">780</span>
+<span id="781">781</span>
+<span id="782">782</span>
+<span id="783">783</span>
+<span id="784">784</span>
+<span id="785">785</span>
+<span id="786">786</span>
+<span id="787">787</span>
+<span id="788">788</span>
+<span id="789">789</span>
+<span id="790">790</span>
+<span id="791">791</span>
+<span id="792">792</span>
+<span id="793">793</span>
+<span id="794">794</span>
+<span id="795">795</span>
+<span id="796">796</span>
+<span id="797">797</span>
+<span id="798">798</span>
+<span id="799">799</span>
+<span id="800">800</span>
+<span id="801">801</span>
+<span id="802">802</span>
+<span id="803">803</span>
+<span id="804">804</span>
+<span id="805">805</span>
+<span id="806">806</span>
+<span id="807">807</span>
+<span id="808">808</span>
+<span id="809">809</span>
+<span id="810">810</span>
+<span id="811">811</span>
+<span id="812">812</span>
+<span id="813">813</span>
+<span id="814">814</span>
+<span id="815">815</span>
+<span id="816">816</span>
+<span id="817">817</span>
+<span id="818">818</span>
+<span id="819">819</span>
+<span id="820">820</span>
+<span id="821">821</span>
+<span id="822">822</span>
+<span id="823">823</span>
+<span id="824">824</span>
+<span id="825">825</span>
+<span id="826">826</span>
+<span id="827">827</span>
+<span id="828">828</span>
+<span id="829">829</span>
+<span id="830">830</span>
+<span id="831">831</span>
+<span id="832">832</span>
+<span id="833">833</span>
+<span id="834">834</span>
+<span id="835">835</span>
+<span id="836">836</span>
+<span id="837">837</span>
+<span id="838">838</span>
+<span id="839">839</span>
+<span id="840">840</span>
+<span id="841">841</span>
+<span id="842">842</span>
+<span id="843">843</span>
+<span id="844">844</span>
+<span id="845">845</span>
+<span id="846">846</span>
+<span id="847">847</span>
+</pre><pre class="rust"><code><span class="comment">// Smoldot
+// Copyright (C) 2019-2022  Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later WITH Classpath-exception-2.0
+
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+
+</span><span class="doccomment">//! Implements the API documented [in the parent module](..).
+
+</span><span class="kw">use super</span>::{
+    ExecOutcome, GlobalValueErr, HeapPages, ModuleError, NewErr, OutOfBoundsError, RunErr,
+    Signature, StartErr, Trap, WasmValue,
+};
+
+<span class="kw">use </span>alloc::{boxed::Box, string::String, sync::Arc, vec::Vec};
+<span class="kw">use </span>core::{
+    fmt, future, mem,
+    pin::Pin,
+    slice,
+    task::{Context, Poll, Waker},
+};
+<span class="comment">// TODO: we use std::sync::Mutex rather than parking_lot::Mutex due to issues with Cargo features, see &lt;https://github.com/paritytech/smoldot/issues/2732&gt;
+</span><span class="kw">use </span>std::sync::Mutex;
+
+<span class="kw">use </span>futures::{task, FutureExt <span class="kw">as _</span>};
+
+<span class="doccomment">/// See [`super::Module`].
+</span><span class="attribute">#[derive(Clone)]
+</span><span class="kw">pub struct </span>Module {
+    inner: wasmtime::Module,
+}
+
+<span class="kw">impl </span>Module {
+    <span class="doccomment">/// See [`super::Module::new`].
+    </span><span class="kw">pub fn </span>new(module_bytes: <span class="kw">impl </span>AsRef&lt;[u8]&gt;) -&gt; <span class="prelude-ty">Result</span>&lt;<span class="self">Self</span>, ModuleError&gt; {
+        <span class="kw">let </span><span class="kw-2">mut </span>config = wasmtime::Config::new();
+        config.cranelift_nan_canonicalization(<span class="bool-val">true</span>);
+        config.cranelift_opt_level(wasmtime::OptLevel::Speed);
+        config.async_support(<span class="bool-val">true</span>);
+        <span class="comment">// The default value of `wasm_backtrace_details` is `Environment`, which reads the
+        // `WASMTIME_BACKTRACE_DETAILS` environment variable to determine whether or not to keep
+        // debug info. However we don&#39;t want any of the behaviour of our code to rely on any
+        // environment variables whatsoever. Whether to use `Enable` or `Disable` below isn&#39;t
+        // very important, so long as it is not `Environment`.
+        </span>config.wasm_backtrace_details(wasmtime::WasmBacktraceDetails::Enable);
+        <span class="kw">let </span>engine = wasmtime::Engine::new(<span class="kw-2">&amp;</span>config).map_err(|err| ModuleError(err.to_string()))<span class="question-mark">?</span>;
+
+        <span class="kw">let </span>inner = wasmtime::Module::from_binary(<span class="kw-2">&amp;</span>engine, module_bytes.as_ref())
+            .map_err(|err| ModuleError(err.to_string()))<span class="question-mark">?</span>;
+
+        <span class="prelude-val">Ok</span>(Module { inner })
+    }
+}
+
+<span class="doccomment">/// See [`super::VirtualMachinePrototype`].
+</span><span class="kw">pub struct </span>JitPrototype {
+    store: wasmtime::Store&lt;()&gt;,
+
+    <span class="doccomment">/// Instantiated Wasm VM.
+    </span>instance: wasmtime::Instance,
+
+    <span class="doccomment">/// Shared between the &quot;outside&quot; and the external functions. See [`Shared`].
+    </span>shared: Arc&lt;Mutex&lt;Shared&gt;&gt;,
+
+    <span class="doccomment">/// Reference to the memory used by the module.
+    </span>memory: wasmtime::Memory,
+
+    <span class="doccomment">/// Reference to the table of indirect functions, in case we need to access it.
+    /// `None` if the module doesn&#39;t export such table.
+    </span>indirect_table: <span class="prelude-ty">Option</span>&lt;wasmtime::Table&gt;,
+}
+
+<span class="kw">impl </span>JitPrototype {
+    <span class="doccomment">/// See [`super::VirtualMachinePrototype::new`].
+    </span><span class="kw">pub fn </span>new(
+        module: <span class="kw-2">&amp;</span>Module,
+        <span class="kw-2">mut </span>symbols: <span class="kw">impl </span>FnMut(<span class="kw-2">&amp;</span>str, <span class="kw-2">&amp;</span>str, <span class="kw-2">&amp;</span>Signature) -&gt; <span class="prelude-ty">Result</span>&lt;usize, ()&gt;,
+    ) -&gt; <span class="prelude-ty">Result</span>&lt;<span class="self">Self</span>, NewErr&gt; {
+        <span class="kw">let </span><span class="kw-2">mut </span>store = wasmtime::Store::new(module.inner.engine(), ());
+
+        <span class="kw">let </span><span class="kw-2">mut </span>imported_memory = <span class="prelude-val">None</span>;
+        <span class="kw">let </span>shared = Arc::new(Mutex::new(Shared::ExecutingStart));
+
+        <span class="comment">// Building the list of symbols that the Wasm VM is able to use.
+        </span><span class="kw">let </span>imports = {
+            <span class="kw">let </span><span class="kw-2">mut </span>imports = Vec::with_capacity(module.inner.imports().len());
+            <span class="kw">for </span>import <span class="kw">in </span>module.inner.imports() {
+                <span class="kw">match </span>import.ty() {
+                    wasmtime::ExternType::Func(f) =&gt; {
+                        <span class="kw">let </span>function_index = <span class="kw">if let </span><span class="prelude-val">Ok</span>(ty) = TryFrom::try_from(<span class="kw-2">&amp;</span>f) {
+                            symbols(import.module(), import.name(), <span class="kw-2">&amp;</span>ty).ok()
+                        } <span class="kw">else </span>{
+                            <span class="prelude-val">None
+                        </span>};
+
+                        <span class="kw">let </span>function_index = <span class="kw">match </span>function_index {
+                            <span class="prelude-val">Some</span>(idx) =&gt; idx,
+                            <span class="prelude-val">None </span>=&gt; {
+                                <span class="kw">return </span><span class="prelude-val">Err</span>(NewErr::UnresolvedFunctionImport {
+                                    module_name: import.module().to_owned(),
+                                    function: import.name().to_owned(),
+                                })
+                            }
+                        };
+
+                        <span class="kw">let </span>shared = shared.clone();
+
+                        imports.push(wasmtime::Extern::Func(wasmtime::Func::new_async(
+                            <span class="kw-2">&amp;mut </span>store,
+                            f.clone(),
+                            <span class="kw">move </span>|<span class="kw-2">mut </span>caller, params, ret_val| {
+                                <span class="comment">// This closure is executed whenever the Wasm VM calls a
+                                // host function.
+                                // While a function call is in progress, only this closure can
+                                // have access to the `wasmtime::Store`. For this reason, we use
+                                // a small communication protocol with the outside.
+
+                                // Transition `shared` from `OutsideFunctionCall` to
+                                // `EnteredFunctionCall`.
+                                </span>{
+                                    <span class="kw">let </span><span class="kw-2">mut </span>shared_lock = shared.try_lock().unwrap();
+                                    <span class="kw">match </span>mem::replace(<span class="kw-2">&amp;mut *</span>shared_lock, Shared::Poisoned) {
+                                        Shared::OutsideFunctionCall { memory } =&gt; {
+                                            <span class="kw-2">*</span>shared_lock = Shared::EnteredFunctionCall {
+                                                function_index,
+                                                <span class="comment">// Because the function signature has been
+                                                // validated at initialization, we can safely
+                                                // convert all the parameter types.
+                                                </span>parameters: params
+                                                    .iter()
+                                                    .map(TryFrom::try_from)
+                                                    .collect::&lt;<span class="prelude-ty">Result</span>&lt;<span class="kw">_</span>, <span class="kw">_</span>&gt;&gt;()
+                                                    .unwrap(),
+                                                in_interrupted_waker: <span class="prelude-val">None</span>, <span class="comment">// Filled below
+                                                </span>memory_pointer: memory.data_ptr(<span class="kw-2">&amp;</span>caller) <span class="kw">as </span>usize,
+                                                memory_size: memory.data_size(<span class="kw-2">&amp;mut </span>caller),
+                                            };
+                                        }
+                                        Shared::ExecutingStart =&gt; {
+                                            <span class="kw">return </span>Box::new(future::ready(<span class="prelude-val">Err</span>(
+                                                anyhow::Error::new(
+                                                    NewErr::StartFunctionNotSupported,
+                                                ),
+                                            )));
+                                        }
+                                        <span class="kw">_ </span>=&gt; <span class="macro">unreachable!</span>(),
+                                    }
+                                }
+
+                                <span class="comment">// Return a future that is ready whenever `Shared` contains
+                                // `Return`.
+                                </span><span class="kw">let </span>shared = shared.clone();
+                                Box::new(future::poll_fn(<span class="kw">move </span>|cx| {
+                                    <span class="kw">let </span><span class="kw-2">mut </span>shared_lock = shared.try_lock().unwrap();
+                                    <span class="kw">match </span><span class="kw-2">*</span>shared_lock {
+                                        Shared::EnteredFunctionCall {
+                                            <span class="kw-2">ref mut </span>in_interrupted_waker,
+                                            ..
+                                        }
+                                        | Shared::WithinFunctionCall {
+                                            <span class="kw-2">ref mut </span>in_interrupted_waker,
+                                            ..
+                                        } =&gt; {
+                                            <span class="kw-2">*</span>in_interrupted_waker = <span class="prelude-val">Some</span>(cx.waker().clone());
+                                            Poll::Pending
+                                        }
+                                        Shared::MemoryGrowRequired {
+                                            <span class="kw-2">ref </span>memory,
+                                            additional,
+                                        } =&gt; {
+                                            <span class="comment">// The outer call has made sure that `additional`
+                                            // would fit.
+                                            </span>memory.grow(<span class="kw-2">&amp;mut </span>caller, additional).unwrap();
+                                            <span class="kw-2">*</span>shared_lock = Shared::WithinFunctionCall {
+                                                in_interrupted_waker: <span class="prelude-val">Some</span>(cx.waker().clone()),
+                                                memory_pointer: memory.data_ptr(<span class="kw-2">&amp;</span>caller) <span class="kw">as </span>usize,
+                                                memory_size: memory.data_size(<span class="kw-2">&amp;</span>caller),
+                                            };
+                                            Poll::Pending
+                                        }
+                                        Shared::Return {
+                                            <span class="kw-2">ref mut </span>return_value,
+                                            memory,
+                                        } =&gt; {
+                                            <span class="kw">if let </span><span class="prelude-val">Some</span>(returned) = return_value.take() {
+                                                <span class="macro">assert_eq!</span>(ret_val.len(), <span class="number">1</span>);
+                                                ret_val[<span class="number">0</span>] = From::from(returned);
+                                            } <span class="kw">else </span>{
+                                                <span class="macro">assert!</span>(ret_val.is_empty());
+                                            }
+
+                                            <span class="kw-2">*</span>shared_lock = Shared::OutsideFunctionCall { memory };
+                                            Poll::Ready(<span class="prelude-val">Ok</span>(()))
+                                        }
+                                        Shared::AbortRequired =&gt; {
+                                            <span class="comment">// The actual error doesn&#39;t matter, as this is only
+                                            // in order to communicate back with our &quot;frontend&quot;.
+                                            </span>Poll::Ready(<span class="prelude-val">Err</span>(anyhow::Error::msg(<span class="string">&quot;abort required&quot;</span>)))
+                                        }
+                                        <span class="kw">_ </span>=&gt; <span class="macro">unreachable!</span>(),
+                                    }
+                                }))
+                            },
+                        )));
+                    }
+                    wasmtime::ExternType::Global(<span class="kw">_</span>) | wasmtime::ExternType::Table(<span class="kw">_</span>) =&gt; {
+                        <span class="kw">return </span><span class="prelude-val">Err</span>(NewErr::ModuleError(ModuleError(
+                            <span class="string">&quot;global/table imports not supported&quot;</span>.to_string(),
+                        )));
+                    }
+                    wasmtime::ExternType::Memory(m) =&gt; {
+                        <span class="kw">if </span>import.module() != <span class="string">&quot;env&quot; </span>|| import.name() != <span class="string">&quot;memory&quot; </span>{
+                            <span class="kw">return </span><span class="prelude-val">Err</span>(NewErr::MemoryNotNamedMemory);
+                        }
+
+                        <span class="comment">// Considering that the memory can only be &quot;env&quot;:&quot;memory&quot;, and that each
+                        // import has a unique name, this block can&#39;t be reached more than once.
+                        </span><span class="macro">debug_assert!</span>(imported_memory.is_none());
+                        imported_memory = <span class="prelude-val">Some</span>(
+                            wasmtime::Memory::new(<span class="kw-2">&amp;mut </span>store, m)
+                                .map_err(|<span class="kw">_</span>| NewErr::CouldntAllocateMemory)<span class="question-mark">?</span>,
+                        );
+                        imports.push(wasmtime::Extern::Memory(<span class="kw-2">*</span>imported_memory.as_ref().unwrap()));
+                    }
+                };
+            }
+            imports
+        };
+
+        <span class="comment">// Calling `wasmtime::Instance::new` executes the `start` function of the module, if any.
+        // If this `start` function calls into one of the imports, then the import will detect
+        // that the shared state is `ExecutingStart` and return an error.
+        // This function call is asynchronous because the `start` function might be asynchronous.
+        // In principle, `now_or_never()` can be unwrapped because the only way for `start` to
+        // not be immediately finished is if it enters an import, which immediately returns an
+        // error. However we return an error anyway, just in case.
+        // If the `start` function doesn&#39;t call any import, then it will go undetected and no
+        // error will be returned.
+        // TODO: detect `start` anyway, for consistency with other backends
+        </span><span class="kw">let </span>instance = wasmtime::Instance::new_async(<span class="kw-2">&amp;mut </span>store, <span class="kw-2">&amp;</span>module.inner, <span class="kw-2">&amp;</span>imports)
+            .now_or_never()
+            .ok_or(NewErr::StartFunctionNotSupported)<span class="question-mark">? </span><span class="comment">// TODO: hacky error value, as the error could also be different
+            </span>.map_err(|err| NewErr::ModuleError(ModuleError(err.to_string())))<span class="question-mark">?</span>;
+
+        <span class="comment">// Now that we are passed the `start` stage, update the state of execution.
+        </span><span class="kw-2">*</span>shared.lock().unwrap() = Shared::Poisoned;
+
+        <span class="kw">let </span>exported_memory = <span class="kw">if let </span><span class="prelude-val">Some</span>(mem) = instance.get_export(<span class="kw-2">&amp;mut </span>store, <span class="string">&quot;memory&quot;</span>) {
+            <span class="kw">if let </span><span class="prelude-val">Some</span>(mem) = mem.into_memory() {
+                <span class="prelude-val">Some</span>(mem)
+            } <span class="kw">else </span>{
+                <span class="kw">return </span><span class="prelude-val">Err</span>(NewErr::MemoryIsntMemory);
+            }
+        } <span class="kw">else </span>{
+            <span class="prelude-val">None
+        </span>};
+
+        <span class="kw">let </span>memory = <span class="kw">match </span>(exported_memory, imported_memory) {
+            (<span class="prelude-val">Some</span>(<span class="kw">_</span>), <span class="prelude-val">Some</span>(<span class="kw">_</span>)) =&gt; <span class="kw">return </span><span class="prelude-val">Err</span>(NewErr::TwoMemories),
+            (<span class="prelude-val">Some</span>(m), <span class="prelude-val">None</span>) =&gt; m,
+            (<span class="prelude-val">None</span>, <span class="prelude-val">Some</span>(m)) =&gt; m,
+            (<span class="prelude-val">None</span>, <span class="prelude-val">None</span>) =&gt; <span class="kw">return </span><span class="prelude-val">Err</span>(NewErr::NoMemory),
+        };
+
+        <span class="kw">let </span>indirect_table =
+            <span class="kw">if let </span><span class="prelude-val">Some</span>(tbl) = instance.get_export(<span class="kw-2">&amp;mut </span>store, <span class="string">&quot;__indirect_function_table&quot;</span>) {
+                <span class="kw">if let </span><span class="prelude-val">Some</span>(tbl) = tbl.into_table() {
+                    <span class="prelude-val">Some</span>(tbl)
+                } <span class="kw">else </span>{
+                    <span class="kw">return </span><span class="prelude-val">Err</span>(NewErr::IndirectTableIsntTable);
+                }
+            } <span class="kw">else </span>{
+                <span class="prelude-val">None
+            </span>};
+
+        <span class="prelude-val">Ok</span>(JitPrototype {
+            store,
+            instance,
+            shared,
+            memory,
+            indirect_table,
+        })
+    }
+
+    <span class="doccomment">/// See [`super::VirtualMachinePrototype::global_value`].
+    </span><span class="kw">pub fn </span>global_value(<span class="kw-2">&amp;mut </span><span class="self">self</span>, name: <span class="kw-2">&amp;</span>str) -&gt; <span class="prelude-ty">Result</span>&lt;u32, GlobalValueErr&gt; {
+        <span class="kw">match </span><span class="self">self</span>.instance.get_export(<span class="kw-2">&amp;mut </span><span class="self">self</span>.store, name) {
+            <span class="prelude-val">Some</span>(wasmtime::Extern::Global(g)) =&gt; <span class="kw">match </span>g.get(<span class="kw-2">&amp;mut </span><span class="self">self</span>.store) {
+                wasmtime::Val::I32(v) =&gt; <span class="prelude-val">Ok</span>(u32::from_ne_bytes(v.to_ne_bytes())),
+                <span class="kw">_ </span>=&gt; <span class="prelude-val">Err</span>(GlobalValueErr::Invalid),
+            },
+            <span class="kw">_ </span>=&gt; <span class="prelude-val">Err</span>(GlobalValueErr::NotFound),
+        }
+    }
+
+    <span class="doccomment">/// See [`super::VirtualMachinePrototype::memory_max_pages`].
+    </span><span class="kw">pub fn </span>memory_max_pages(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Option</span>&lt;HeapPages&gt; {
+        <span class="kw">let </span>num = <span class="self">self</span>.memory.ty(<span class="kw-2">&amp;</span><span class="self">self</span>.store).maximum()<span class="question-mark">?</span>;
+        <span class="kw">match </span>u32::try_from(num) {
+            <span class="prelude-val">Ok</span>(n) =&gt; <span class="prelude-val">Some</span>(HeapPages::new(n)),
+            <span class="comment">// If `num` doesn&#39;t fit in a `u32`, we return `None` to mean &quot;infinite&quot;.
+            </span><span class="prelude-val">Err</span>(<span class="kw">_</span>) =&gt; <span class="prelude-val">None</span>,
+        }
+    }
+
+    <span class="doccomment">/// See [`super::VirtualMachinePrototype::start`].
+    </span><span class="kw">pub fn </span>start(
+        <span class="kw-2">mut </span><span class="self">self</span>,
+        min_memory_pages: HeapPages,
+        function_name: <span class="kw-2">&amp;</span>str,
+        params: <span class="kw-2">&amp;</span>[WasmValue],
+    ) -&gt; <span class="prelude-ty">Result</span>&lt;Jit, (StartErr, <span class="self">Self</span>)&gt; {
+        <span class="kw">let </span>min_memory_pages = u64::from(min_memory_pages.<span class="number">0</span>);
+        <span class="kw">if let </span><span class="prelude-val">Some</span>(to_grow) = min_memory_pages.checked_sub(<span class="self">self</span>.memory.size(<span class="kw-2">&amp;</span><span class="self">self</span>.store)) {
+            <span class="kw">if </span><span class="self">self</span>.memory.grow(<span class="kw-2">&amp;mut </span><span class="self">self</span>.store, to_grow).is_err() {
+                <span class="kw">return </span><span class="prelude-val">Err</span>((StartErr::RequiredMemoryTooLarge, <span class="self">self</span>));
+            }
+        }
+
+        <span class="kw">let </span>function_to_call = <span class="kw">match </span><span class="self">self</span>.instance.get_export(<span class="kw-2">&amp;mut </span><span class="self">self</span>.store, function_name) {
+            <span class="prelude-val">Some</span>(export) =&gt; <span class="kw">match </span>export.into_func() {
+                <span class="prelude-val">Some</span>(f) =&gt; f,
+                <span class="prelude-val">None </span>=&gt; <span class="kw">return </span><span class="prelude-val">Err</span>((StartErr::NotAFunction, <span class="self">self</span>)),
+            },
+            <span class="prelude-val">None </span>=&gt; <span class="kw">return </span><span class="prelude-val">Err</span>((StartErr::FunctionNotFound, <span class="self">self</span>)),
+        };
+
+        <span class="comment">// Try to convert the signature of the function to call, in order to make sure
+        // that the type of parameters and return value are supported.
+        </span><span class="kw">if </span>Signature::try_from(<span class="kw-2">&amp;</span>function_to_call.ty(<span class="kw-2">&amp;</span><span class="self">self</span>.store)).is_err() {
+            <span class="kw">return </span><span class="prelude-val">Err</span>((StartErr::SignatureNotSupported, <span class="self">self</span>));
+        }
+
+        <span class="comment">// This function only performs all the verifications and preparations, but the call isn&#39;t
+        // actually started here because we might still need to potentially access `store`
+        // before being in the context of a function handler.
+
+        </span><span class="prelude-val">Ok</span>(Jit {
+            inner: JitInner::NotStarted {
+                store: <span class="self">self</span>.store,
+                function_to_call,
+                params: params.iter().map(|v| (<span class="kw-2">*</span>v).into()).collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;(),
+            },
+            instance: <span class="self">self</span>.instance,
+            shared: <span class="self">self</span>.shared,
+            memory: <span class="self">self</span>.memory,
+            indirect_table: <span class="self">self</span>.indirect_table,
+        })
+    }
+}
+
+<span class="comment">// TODO: revisit this
+// The fields related to `wasmtime` do not implement `Send` because they use `std::rc::Rc`. `Rc`
+// does not implement `Send` because incrementing/decrementing the reference counter from
+// multiple threads simultaneously would be racy. It is however perfectly sound to move all the
+// instances of `Rc`s at once between threads, which is what we&#39;re doing here.
+//
+// This importantly means that we should never return a `Rc` (even by reference) across the API
+// boundary.
+// TODO: really annoying to have to use unsafe code
+</span><span class="kw">unsafe impl </span>Send <span class="kw">for </span>JitPrototype {}
+
+<span class="kw">impl </span>fmt::Debug <span class="kw">for </span>JitPrototype {
+    <span class="kw">fn </span>fmt(<span class="kw-2">&amp;</span><span class="self">self</span>, f: <span class="kw-2">&amp;mut </span>fmt::Formatter) -&gt; fmt::Result {
+        f.debug_tuple(<span class="string">&quot;JitPrototype&quot;</span>).finish()
+    }
+}
+
+<span class="doccomment">/// Data shared between the external API and the functions that `wasmtime` directly invokes.
+///
+/// The flow is as follows:
+///
+/// - `wasmtime` calls a function that shares access to a `Arc&lt;Mutex&lt;Shared&gt;&gt;`. The `Shared` is in
+/// the [`Shared::OutsideFunctionCall`] state.
+/// - This function switches the state to the [`Shared::EnteredFunctionCall`] state and returns
+/// `Poll::Pending`.
+/// - This `Pending` gets propagated to the body of [`Jit::run`], which was calling `wasmtime`.
+/// [`Jit::run`] reads `function_index` and `parameters` to determine what happened, switches the
+/// state of the `Shared` to [`Shared::WithinFunctionCall`] state, and returns `Poll::Pending`.
+/// - Here, the user can access the memory, in which case the `Shared` is read. If the user wants
+/// to grow the memory, the state is switched to [`Shared::MemoryGrowRequired`], then execution
+/// resumed for the function to perform the growth and transition back to
+/// [`Shared::WithinFunctionCall`].
+/// - Later, the state is switched to [`Shared::Return`], and execution is resumed.
+/// - The function called by `wasmtime` reads the return value and returns `Poll::Ready`.
+///
+</span><span class="kw">enum </span>Shared {
+    Poisoned,
+    ExecutingStart,
+    OutsideFunctionCall {
+        memory: wasmtime::Memory,
+    },
+    <span class="doccomment">/// Function handler switches to this state as soon as it is entered, so that the host can
+    /// pick up this state, extract the function index and parameters, and transition to
+    /// [`Shared::WithinFunctionCall`].
+    </span>EnteredFunctionCall {
+        <span class="doccomment">/// Index of the function currently being called.
+        </span>function_index: usize,
+        <span class="doccomment">/// Parameters of the function currently being called.
+        </span>parameters: Vec&lt;WasmValue&gt;,
+
+        <span class="doccomment">/// See [`Shared::WithinFunctionCall::memory_pointer`].
+        </span>memory_pointer: usize,
+        <span class="doccomment">/// See [`Shared::WithinFunctionCall::memory_size`].
+        </span>memory_size: usize,
+        <span class="doccomment">/// See [`Shared::WithinFunctionCall::in_interrupted_waker`].
+        </span>in_interrupted_waker: <span class="prelude-ty">Option</span>&lt;Waker&gt;,
+    },
+    WithinFunctionCall {
+        <span class="doccomment">/// Pointer to the location where the virtual machine memory is located in the host
+        /// memory. This pointer is invalidated if the memory is grown, which can happen between
+        /// function calls.
+        </span>memory_pointer: usize,
+        <span class="doccomment">/// Size of the virtual machine memory in bytes. This size is invalidated if the memory
+        /// is grown, which can happen between function calls.
+        </span>memory_size: usize,
+
+        <span class="doccomment">/// `Waker` that `wasmtime` has passed to the future that is waiting for `return_value`.
+        /// This value is most likely not very useful, because [`Jit::run`] always polls the outer
+        /// future whenever the inner future is known to be ready.
+        /// However, it would be completely legal for `wasmtime` to not poll the inner future if the
+        /// `waker` that it has passed (the one stored here) wasn&#39;t waken up.
+        /// This field therefore exists in order to future-proof against this possible optimization
+        /// that `wasmtime` might perform in the future.
+        </span>in_interrupted_waker: <span class="prelude-ty">Option</span>&lt;Waker&gt;,
+    },
+    MemoryGrowRequired {
+        memory: wasmtime::Memory,
+        additional: u64,
+    },
+    AbortRequired,
+    Return {
+        <span class="doccomment">/// Value to return to the Wasm code.
+        </span>return_value: <span class="prelude-ty">Option</span>&lt;WasmValue&gt;,
+        memory: wasmtime::Memory,
+    },
+}
+
+<span class="doccomment">/// See [`super::VirtualMachine`].
+</span><span class="kw">pub struct </span>Jit {
+    inner: JitInner,
+
+    <span class="doccomment">/// Instantiated Wasm VM.
+    </span>instance: wasmtime::Instance,
+
+    <span class="doccomment">/// Shared between the &quot;outside&quot; and the external functions. See [`Shared`].
+    </span>shared: Arc&lt;Mutex&lt;Shared&gt;&gt;,
+
+    <span class="doccomment">/// See [`JitPrototype::memory`].
+    </span>memory: wasmtime::Memory,
+
+    <span class="doccomment">/// See [`JitPrototype::indirect_table`].
+    </span>indirect_table: <span class="prelude-ty">Option</span>&lt;wasmtime::Table&gt;,
+}
+
+<span class="kw">enum </span>JitInner {
+    Poisoned,
+
+    <span class="doccomment">/// Execution has not started yet.
+    </span>NotStarted {
+        store: wasmtime::Store&lt;()&gt;,
+        function_to_call: wasmtime::Func,
+        params: Vec&lt;wasmtime::Val&gt;,
+    },
+    <span class="doccomment">/// `Future` that drives the execution. Contains an invocation of `wasmtime::Func::call_async`.
+    </span>Executing(
+        Pin&lt;
+            Box&lt;
+                <span class="kw">dyn </span>future::Future&lt;
+                    Output = (wasmtime::Store&lt;()&gt;, <span class="prelude-ty">Result</span>&lt;<span class="prelude-ty">Option</span>&lt;WasmValue&gt;, String&gt;),
+                &gt;,
+            &gt;,
+        &gt;,
+    ),
+    <span class="doccomment">/// Execution has finished because the future has returned `Poll::Ready` in the past.
+    </span>Done(wasmtime::Store&lt;()&gt;),
+}
+
+<span class="kw">impl </span>Jit {
+    <span class="doccomment">/// See [`super::VirtualMachine::run`].
+    </span><span class="kw">pub fn </span>run(<span class="kw-2">&amp;mut </span><span class="self">self</span>, value: <span class="prelude-ty">Option</span>&lt;WasmValue&gt;) -&gt; <span class="prelude-ty">Result</span>&lt;ExecOutcome, RunErr&gt; {
+        <span class="comment">// Make sure that `self.inner` is in `JitInner::Executing` start, starting the call if
+        // necessary.
+        </span><span class="kw">match </span><span class="self">self</span>.inner {
+            JitInner::Executing(<span class="kw">_</span>) =&gt; {
+                <span class="comment">// Virtual machine was already executing. Update `Shared` to store the return
+                // value, so that the function handler picks it up and returns it to `wasmtime`.
+                </span><span class="kw">let </span><span class="kw-2">mut </span>shared_lock = <span class="self">self</span>.shared.try_lock().unwrap();
+                <span class="kw">match </span>mem::replace(<span class="kw-2">&amp;mut *</span>shared_lock, Shared::Poisoned) {
+                    Shared::WithinFunctionCall {
+                        in_interrupted_waker,
+                        ..
+                    } =&gt; {
+                        <span class="kw-2">*</span>shared_lock = Shared::Return {
+                            return_value: value,
+                            memory: <span class="self">self</span>.memory,
+                        };
+
+                        <span class="kw">if let </span><span class="prelude-val">Some</span>(waker) = in_interrupted_waker {
+                            waker.wake();
+                        }
+                    }
+                    <span class="kw">_ </span>=&gt; <span class="macro">unreachable!</span>(),
+                }
+            }
+            JitInner::Done(<span class="kw">_</span>) =&gt; <span class="kw">return </span><span class="prelude-val">Err</span>(RunErr::Poisoned),
+            JitInner::Poisoned =&gt; <span class="macro">unreachable!</span>(),
+            JitInner::NotStarted { .. } =&gt; {
+                <span class="kw">let </span>(function_to_call, params, <span class="kw-2">mut </span>store) =
+                    <span class="kw">match </span>mem::replace(<span class="kw-2">&amp;mut </span><span class="self">self</span>.inner, JitInner::Poisoned) {
+                        JitInner::NotStarted {
+                            function_to_call,
+                            params,
+                            store,
+                        } =&gt; (function_to_call, params, store),
+                        <span class="kw">_ </span>=&gt; <span class="macro">unreachable!</span>(),
+                    };
+
+                <span class="comment">// TODO: check that value is None
+
+                </span><span class="kw-2">*</span><span class="self">self</span>.shared.try_lock().unwrap() = Shared::OutsideFunctionCall {
+                    memory: <span class="self">self</span>.memory,
+                };
+
+                <span class="comment">// Check whether the function to call has a return value.
+                // We made sure when starting that the signature was supported.
+                </span><span class="kw">let </span>has_return_value = Signature::try_from(<span class="kw-2">&amp;</span>function_to_call.ty(<span class="kw-2">&amp;</span>store))
+                    .unwrap()
+                    .return_type()
+                    .is_some();
+
+                <span class="comment">// Starting the function call.
+                </span><span class="kw">let </span>function_call = Box::pin(<span class="kw">async move </span>{
+                    <span class="comment">// Prepare an array of results to pass to `wasmtime`. Note that the type doesn&#39;t
+                    // have to match the actual return value, only the length.
+                    </span><span class="kw">let </span><span class="kw-2">mut </span>result = [wasmtime::Val::I32(<span class="number">0</span>)];
+
+                    <span class="kw">let </span>outcome = function_to_call
+                        .call_async(
+                            <span class="kw-2">&amp;mut </span>store,
+                            <span class="kw-2">&amp;</span>params,
+                            <span class="kw-2">&amp;mut </span>result[..(<span class="kw">if </span>has_return_value { <span class="number">1 </span>} <span class="kw">else </span>{ <span class="number">0 </span>})],
+                        )
+                        .<span class="kw">await</span>;
+
+                    <span class="comment">// Execution resumes here when the Wasm code has finished, gracefully or not.
+                    </span><span class="kw">match </span>outcome {
+                        <span class="prelude-val">Ok</span>(()) <span class="kw">if </span>has_return_value =&gt; {
+                            <span class="comment">// TODO: could implement TryFrom on wasmtime::Val instead of &amp;wasmtime::Val to avoid borrow here?
+                            </span>(store, <span class="prelude-val">Ok</span>(<span class="prelude-val">Some</span>((<span class="kw-2">&amp;</span>result[<span class="number">0</span>]).try_into().unwrap())))
+                        }
+                        <span class="prelude-val">Ok</span>(()) =&gt; (store, <span class="prelude-val">Ok</span>(<span class="prelude-val">None</span>)),
+                        <span class="prelude-val">Err</span>(err) =&gt; {
+                            <span class="comment">// The type of error is from the `anyhow` library. By using
+                            // `to_string()` we avoid having to deal with it.
+                            </span>(store, <span class="prelude-val">Err</span>(err.to_string()))
+                        }
+                    }
+                });
+
+                <span class="self">self</span>.inner = JitInner::Executing(function_call);
+            }
+        };
+
+        <span class="comment">// We made sure that the state is in `Executing`. Now grab the future.
+        </span><span class="kw">let </span>function_call = <span class="kw">match </span><span class="kw-2">&amp;mut </span><span class="self">self</span>.inner {
+            JitInner::Executing(f) =&gt; f,
+            <span class="kw">_ </span>=&gt; <span class="macro">unreachable!</span>(),
+        };
+
+        <span class="comment">// TODO: check value type
+
+        // Resume the coroutine execution.
+        // The `Future` is polled with a no-op waker. We are in total control of when the
+        // execution might be able to progress, hence the lack of need for a waker.
+        </span><span class="kw">match </span>future::Future::poll(
+            function_call.as_mut(),
+            <span class="kw-2">&amp;mut </span>Context::from_waker(task::noop_waker_ref()),
+        ) {
+            Poll::Ready((store, <span class="prelude-val">Ok</span>(val))) =&gt; {
+                <span class="self">self</span>.inner = JitInner::Done(store);
+                <span class="prelude-val">Ok</span>(ExecOutcome::Finished {
+                    <span class="comment">// Since we verify at initialization that the signature of the function to
+                    // call is supported, it is guaranteed that the type of this return value is
+                    // supported too.
+                    </span>return_value: <span class="prelude-val">Ok</span>(val),
+                })
+            }
+            Poll::Ready((store, <span class="prelude-val">Err</span>(err))) =&gt; {
+                <span class="self">self</span>.inner = JitInner::Done(store);
+                <span class="prelude-val">Ok</span>(ExecOutcome::Finished {
+                    return_value: <span class="prelude-val">Err</span>(Trap(err)),
+                })
+            }
+            Poll::Pending =&gt; {
+                <span class="kw">let </span><span class="kw-2">mut </span>shared_lock = <span class="self">self</span>.shared.try_lock().unwrap();
+                <span class="kw">match </span>mem::replace(<span class="kw-2">&amp;mut *</span>shared_lock, Shared::Poisoned) {
+                    Shared::EnteredFunctionCall {
+                        function_index,
+                        parameters,
+                        memory_pointer,
+                        memory_size,
+                        in_interrupted_waker,
+                    } =&gt; {
+                        <span class="kw-2">*</span>shared_lock = Shared::WithinFunctionCall {
+                            memory_pointer,
+                            memory_size,
+                            in_interrupted_waker,
+                        };
+
+                        <span class="prelude-val">Ok</span>(ExecOutcome::Interrupted {
+                            id: function_index,
+                            params: parameters,
+                        })
+                    }
+                    <span class="kw">_ </span>=&gt; <span class="macro">unreachable!</span>(),
+                }
+            }
+        }
+    }
+
+    <span class="doccomment">/// See [`super::VirtualMachine::memory_size`].
+    </span><span class="kw">pub fn </span>memory_size(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; HeapPages {
+        <span class="kw">match </span><span class="kw-2">&amp;</span><span class="self">self</span>.inner {
+            JitInner::NotStarted { store, .. } | JitInner::Done(store) =&gt; {
+                <span class="kw">let </span>heap_pages = <span class="self">self</span>.memory.size(store);
+                HeapPages::new(u32::try_from(heap_pages).unwrap())
+            }
+            JitInner::Executing(<span class="kw">_</span>) =&gt; {
+                <span class="kw">let </span>size_bytes = <span class="kw">match </span><span class="kw-2">*</span><span class="self">self</span>.shared.try_lock().unwrap() {
+                    Shared::WithinFunctionCall { memory_size, .. } =&gt; memory_size,
+                    <span class="kw">_ </span>=&gt; <span class="macro">unreachable!</span>(),
+                };
+
+                <span class="kw">if </span>size_bytes == <span class="number">0 </span>{
+                    HeapPages::new(<span class="number">0</span>)
+                } <span class="kw">else </span>{
+                    HeapPages::new(<span class="number">1 </span>+ u32::try_from((size_bytes - <span class="number">1</span>) / (<span class="number">64 </span>* <span class="number">1024</span>)).unwrap())
+                }
+            }
+            JitInner::Poisoned =&gt; <span class="macro">unreachable!</span>(),
+        }
+    }
+
+    <span class="doccomment">/// See [`super::VirtualMachine::read_memory`].
+    </span><span class="kw">pub fn </span>read_memory(
+        <span class="kw-2">&amp;</span><span class="lifetime">&#39;_ </span><span class="self">self</span>,
+        offset: u32,
+        size: u32,
+    ) -&gt; <span class="prelude-ty">Result</span>&lt;<span class="kw">impl </span>AsRef&lt;[u8]&gt; + <span class="lifetime">&#39;_</span>, OutOfBoundsError&gt; {
+        <span class="kw">let </span>memory_slice = <span class="kw">match </span><span class="kw-2">&amp;</span><span class="self">self</span>.inner {
+            JitInner::NotStarted { store, .. } | JitInner::Done(store) =&gt; <span class="self">self</span>.memory.data(store),
+            JitInner::Executing(<span class="kw">_</span>) =&gt; {
+                <span class="kw">let </span>(memory_pointer, memory_size) = <span class="kw">match </span><span class="kw-2">*</span><span class="self">self</span>.shared.try_lock().unwrap() {
+                    Shared::WithinFunctionCall {
+                        memory_pointer,
+                        memory_size,
+                        ..
+                    } =&gt; (memory_pointer, memory_size),
+                    <span class="kw">_ </span>=&gt; <span class="macro">unreachable!</span>(),
+                };
+
+                <span class="kw">unsafe </span>{ slice::from_raw_parts(memory_pointer <span class="kw">as </span><span class="kw-2">*mut </span>u8, memory_size) }
+            }
+            JitInner::Poisoned =&gt; <span class="macro">unreachable!</span>(),
+        };
+
+        <span class="kw">let </span>start = usize::try_from(offset).map_err(|<span class="kw">_</span>| OutOfBoundsError)<span class="question-mark">?</span>;
+        <span class="kw">let </span>end = start
+            .checked_add(usize::try_from(size).map_err(|<span class="kw">_</span>| OutOfBoundsError)<span class="question-mark">?</span>)
+            .ok_or(OutOfBoundsError)<span class="question-mark">?</span>;
+
+        <span class="kw">if </span>end &gt; memory_slice.len() {
+            <span class="kw">return </span><span class="prelude-val">Err</span>(OutOfBoundsError);
+        }
+
+        <span class="prelude-val">Ok</span>(<span class="kw-2">&amp;</span>memory_slice[start..end])
+    }
+
+    <span class="doccomment">/// See [`super::VirtualMachine::write_memory`].
+    </span><span class="kw">pub fn </span>write_memory(<span class="kw-2">&amp;mut </span><span class="self">self</span>, offset: u32, value: <span class="kw-2">&amp;</span>[u8]) -&gt; <span class="prelude-ty">Result</span>&lt;(), OutOfBoundsError&gt; {
+        <span class="kw">let </span>memory_slice = <span class="kw">match </span><span class="kw-2">&amp;mut </span><span class="self">self</span>.inner {
+            JitInner::NotStarted { store, .. } | JitInner::Done(store) =&gt; {
+                <span class="self">self</span>.memory.data_mut(store)
+            }
+            JitInner::Executing(<span class="kw">_</span>) =&gt; {
+                <span class="kw">let </span>(memory_pointer, memory_size) = <span class="kw">match </span><span class="kw-2">*</span><span class="self">self</span>.shared.try_lock().unwrap() {
+                    Shared::WithinFunctionCall {
+                        memory_pointer,
+                        memory_size,
+                        ..
+                    } =&gt; (memory_pointer, memory_size),
+                    <span class="kw">_ </span>=&gt; <span class="macro">unreachable!</span>(),
+                };
+
+                <span class="kw">unsafe </span>{ slice::from_raw_parts_mut(memory_pointer <span class="kw">as </span><span class="kw-2">*mut </span>u8, memory_size) }
+            }
+            JitInner::Poisoned =&gt; <span class="macro">unreachable!</span>(),
+        };
+
+        <span class="kw">let </span>start = usize::try_from(offset).map_err(|<span class="kw">_</span>| OutOfBoundsError)<span class="question-mark">?</span>;
+        <span class="kw">let </span>end = start.checked_add(value.len()).ok_or(OutOfBoundsError)<span class="question-mark">?</span>;
+
+        <span class="kw">if </span>end &gt; memory_slice.len() {
+            <span class="kw">return </span><span class="prelude-val">Err</span>(OutOfBoundsError);
+        }
+
+        <span class="kw">if </span>!value.is_empty() {
+            memory_slice[start..end].copy_from_slice(value);
+        }
+
+        <span class="prelude-val">Ok</span>(())
+    }
+
+    <span class="doccomment">/// See [`super::VirtualMachine::grow_memory`].
+    </span><span class="kw">pub fn </span>grow_memory(<span class="kw-2">&amp;mut </span><span class="self">self</span>, additional: HeapPages) -&gt; <span class="prelude-ty">Result</span>&lt;(), OutOfBoundsError&gt; {
+        <span class="comment">// TODO: must check whether additional is within bounds
+        </span><span class="kw">let </span>additional = u64::from(u32::from(additional));
+
+        <span class="kw">match </span><span class="kw-2">&amp;mut </span><span class="self">self</span>.inner {
+            JitInner::NotStarted { store, .. } | JitInner::Done(store) =&gt; {
+                <span class="comment">// This is the simple case: we still have access to the `store` and can perform
+                // the growth synchronously.
+                </span><span class="self">self</span>.memory.grow(store, additional).unwrap();
+            }
+            JitInner::Poisoned =&gt; <span class="macro">unreachable!</span>(),
+            JitInner::Executing(function_call) =&gt; {
+                <span class="comment">// This is the complicated case: the call is in progress and we don&#39;t have access
+                // to the `store`. Switch `Shared` to `MemoryGrowRequired`, then resume execution
+                // so that the function handler performs the grow.
+                </span><span class="kw">let </span><span class="kw-2">mut </span>shared_lock = <span class="self">self</span>.shared.try_lock().unwrap();
+                <span class="kw">match </span>mem::replace(<span class="kw-2">&amp;mut *</span>shared_lock, Shared::Poisoned) {
+                    Shared::WithinFunctionCall {
+                        in_interrupted_waker,
+                        ..
+                    } =&gt; {
+                        <span class="kw">if let </span><span class="prelude-val">Some</span>(waker) = in_interrupted_waker {
+                            waker.wake();
+                        }
+
+                        <span class="kw-2">*</span>shared_lock = Shared::MemoryGrowRequired {
+                            memory: <span class="self">self</span>.memory,
+                            additional,
+                        }
+                    }
+                    <span class="kw">_ </span>=&gt; <span class="macro">unreachable!</span>(),
+                }
+                drop(shared_lock);
+
+                <span class="comment">// Resume the coroutine execution once for the function handler to pick up the
+                // `MemoryGrowRequired`, perform the grow, and switch back to `WithinFunctionCall`.
+                // The `Future` is polled with a no-op waker. We are in total control of when the
+                // execution might be able to progress, hence the lack of need for a waker.
+                </span><span class="kw">match </span>future::Future::poll(
+                    function_call.as_mut(),
+                    <span class="kw-2">&amp;mut </span>Context::from_waker(task::noop_waker_ref()),
+                ) {
+                    Poll::Ready(<span class="kw">_</span>) =&gt; <span class="macro">unreachable!</span>(),
+                    Poll::Pending =&gt; {
+                        <span class="macro">debug_assert!</span>(<span class="macro">matches!</span>(
+                            <span class="kw-2">*</span><span class="self">self</span>.shared.try_lock().unwrap(),
+                            Shared::WithinFunctionCall { .. }
+                        ));
+                    }
+                }
+            }
+        }
+
+        <span class="prelude-val">Ok</span>(())
+    }
+
+    <span class="doccomment">/// See [`super::VirtualMachine::into_prototype`].
+    </span><span class="kw">pub fn </span>into_prototype(<span class="self">self</span>) -&gt; JitPrototype {
+        <span class="kw">let </span>store = <span class="kw">match </span><span class="self">self</span>.inner {
+            JitInner::NotStarted { store, .. } | JitInner::Done(store) =&gt; store,
+            JitInner::Poisoned =&gt; <span class="macro">unreachable!</span>(),
+            JitInner::Executing(<span class="kw-2">mut </span>function_call) =&gt; {
+                <span class="comment">// The call is still in progress, and we need to abort it. Switch `Shared` to
+                // `AbortRequired`, then resume execution so that the function traps and returns
+                // the store.
+                </span><span class="kw">let </span><span class="kw-2">mut </span>shared_lock = <span class="self">self</span>.shared.try_lock().unwrap();
+                <span class="kw">match </span>mem::replace(<span class="kw-2">&amp;mut *</span>shared_lock, Shared::Poisoned) {
+                    Shared::WithinFunctionCall {
+                        in_interrupted_waker,
+                        ..
+                    } =&gt; {
+                        <span class="kw">if let </span><span class="prelude-val">Some</span>(waker) = in_interrupted_waker {
+                            waker.wake();
+                        }
+
+                        <span class="kw-2">*</span>shared_lock = Shared::AbortRequired;
+                    }
+                    <span class="kw">_ </span>=&gt; <span class="macro">unreachable!</span>(),
+                }
+                drop(shared_lock);
+
+                <span class="kw">match </span>future::Future::poll(
+                    function_call.as_mut(),
+                    <span class="kw-2">&amp;mut </span>Context::from_waker(task::noop_waker_ref()),
+                ) {
+                    Poll::Ready((store, <span class="prelude-val">Err</span>(<span class="kw">_</span>))) =&gt; store,
+                    <span class="kw">_ </span>=&gt; <span class="macro">unreachable!</span>(),
+                }
+            }
+        };
+
+        <span class="comment">// TODO: necessary?
+        /*// Zero-ing the memory.
+        if let Some(memory) = &amp;self.memory {
+            // Soundness: the documentation of wasmtime precisely explains what is safe or not.
+            // Basically, we are safe as long as we are sure that we don&#39;t potentially grow the
+            // buffer (which would invalidate the buffer pointer).
+            unsafe {
+                for byte in memory.data_mut() {
+                    *byte = 0;
+                }
+            }
+        }*/
+
+        </span>JitPrototype {
+            store,
+            instance: <span class="self">self</span>.instance,
+            shared: <span class="self">self</span>.shared,
+            memory: <span class="self">self</span>.memory,
+            indirect_table: <span class="self">self</span>.indirect_table,
+        }
+    }
+}
+
+<span class="comment">// TODO: figure out and explain why wasmtime isn&#39;t Send
+</span><span class="kw">unsafe impl </span>Send <span class="kw">for </span>Jit {}
+
+<span class="kw">impl </span>fmt::Debug <span class="kw">for </span>Jit {
+    <span class="kw">fn </span>fmt(<span class="kw-2">&amp;</span><span class="self">self</span>, f: <span class="kw-2">&amp;mut </span>fmt::Formatter) -&gt; fmt::Result {
+        f.debug_tuple(<span class="string">&quot;Jit&quot;</span>).finish()
+    }
+}
+</code></pre></div>
+</section></div></main><div id="rustdoc-vars" data-root-path="../../../../" data-current-crate="smoldot" data-themes="ayu,dark,light" data-resource-suffix="" data-rustdoc-version="1.65.0 (897e37553 2022-11-02)" ></div></body></html>

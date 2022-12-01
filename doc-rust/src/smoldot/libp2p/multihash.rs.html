@@ -1,0 +1,270 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `src/libp2p/multihash.rs`."><meta name="keywords" content="rust, rustlang, rust-lang"><title>multihash.rs - source</title><link rel="preload" as="font" type="font/woff2" crossorigin href="../../../SourceSerif4-Regular.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../../FiraSans-Regular.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../../FiraSans-Medium.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../../SourceCodePro-Regular.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../../SourceSerif4-Bold.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../../SourceCodePro-Semibold.ttf.woff2"><link rel="stylesheet" href="../../../normalize.css"><link rel="stylesheet" href="../../../rustdoc.css" id="mainThemeStyle"><link rel="stylesheet" href="../../../ayu.css" disabled><link rel="stylesheet" href="../../../dark.css" disabled><link rel="stylesheet" href="../../../light.css" id="themeStyle"><script id="default-settings" ></script><script src="../../../storage.js"></script><script defer src="../../../source-script.js"></script><script defer src="../../../source-files.js"></script><script defer src="../../../main.js"></script><noscript><link rel="stylesheet" href="../../../noscript.css"></noscript><link rel="alternate icon" type="image/png" href="../../../favicon-16x16.png"><link rel="alternate icon" type="image/png" href="../../../favicon-32x32.png"><link rel="icon" type="image/svg+xml" href="../../../favicon.svg"></head><body class="rustdoc source"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="mobile-topbar"><button class="sidebar-menu-toggle">&#9776;</button><a class="sidebar-logo" href="../../../smoldot/index.html"><div class="logo-container"><img class="rust-logo" src="../../../rust-logo.svg" alt="logo"></div></a><h2 class="location"></h2></nav><nav class="sidebar"><a class="sidebar-logo" href="../../../smoldot/index.html"><div class="logo-container"><img class="rust-logo" src="../../../rust-logo.svg" alt="logo"></div></a></nav><main><div class="width-limiter"><div class="sub-container"><a class="sub-logo-container" href="../../../smoldot/index.html"><img class="rust-logo" src="../../../rust-logo.svg" alt="logo"></a><nav class="sub"><form class="search-form"><div class="search-container"><span></span><input class="search-input" name="search" autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"><div id="help-button" title="help" tabindex="-1"><button type="button">?</button></div><div id="settings-menu" tabindex="-1"><a href="../../../settings.html" title="settings"><img width="22" height="22" alt="Change settings" src="../../../wheel.svg"></a></div></div></form></nav></div><section id="main-content" class="content"><div class="example-wrap"><pre class="line-numbers"><span id="1">1</span>
+<span id="2">2</span>
+<span id="3">3</span>
+<span id="4">4</span>
+<span id="5">5</span>
+<span id="6">6</span>
+<span id="7">7</span>
+<span id="8">8</span>
+<span id="9">9</span>
+<span id="10">10</span>
+<span id="11">11</span>
+<span id="12">12</span>
+<span id="13">13</span>
+<span id="14">14</span>
+<span id="15">15</span>
+<span id="16">16</span>
+<span id="17">17</span>
+<span id="18">18</span>
+<span id="19">19</span>
+<span id="20">20</span>
+<span id="21">21</span>
+<span id="22">22</span>
+<span id="23">23</span>
+<span id="24">24</span>
+<span id="25">25</span>
+<span id="26">26</span>
+<span id="27">27</span>
+<span id="28">28</span>
+<span id="29">29</span>
+<span id="30">30</span>
+<span id="31">31</span>
+<span id="32">32</span>
+<span id="33">33</span>
+<span id="34">34</span>
+<span id="35">35</span>
+<span id="36">36</span>
+<span id="37">37</span>
+<span id="38">38</span>
+<span id="39">39</span>
+<span id="40">40</span>
+<span id="41">41</span>
+<span id="42">42</span>
+<span id="43">43</span>
+<span id="44">44</span>
+<span id="45">45</span>
+<span id="46">46</span>
+<span id="47">47</span>
+<span id="48">48</span>
+<span id="49">49</span>
+<span id="50">50</span>
+<span id="51">51</span>
+<span id="52">52</span>
+<span id="53">53</span>
+<span id="54">54</span>
+<span id="55">55</span>
+<span id="56">56</span>
+<span id="57">57</span>
+<span id="58">58</span>
+<span id="59">59</span>
+<span id="60">60</span>
+<span id="61">61</span>
+<span id="62">62</span>
+<span id="63">63</span>
+<span id="64">64</span>
+<span id="65">65</span>
+<span id="66">66</span>
+<span id="67">67</span>
+<span id="68">68</span>
+<span id="69">69</span>
+<span id="70">70</span>
+<span id="71">71</span>
+<span id="72">72</span>
+<span id="73">73</span>
+<span id="74">74</span>
+<span id="75">75</span>
+<span id="76">76</span>
+<span id="77">77</span>
+<span id="78">78</span>
+<span id="79">79</span>
+<span id="80">80</span>
+<span id="81">81</span>
+<span id="82">82</span>
+<span id="83">83</span>
+<span id="84">84</span>
+<span id="85">85</span>
+<span id="86">86</span>
+<span id="87">87</span>
+<span id="88">88</span>
+<span id="89">89</span>
+<span id="90">90</span>
+<span id="91">91</span>
+<span id="92">92</span>
+<span id="93">93</span>
+<span id="94">94</span>
+<span id="95">95</span>
+<span id="96">96</span>
+<span id="97">97</span>
+<span id="98">98</span>
+<span id="99">99</span>
+<span id="100">100</span>
+<span id="101">101</span>
+<span id="102">102</span>
+<span id="103">103</span>
+<span id="104">104</span>
+<span id="105">105</span>
+<span id="106">106</span>
+<span id="107">107</span>
+<span id="108">108</span>
+<span id="109">109</span>
+<span id="110">110</span>
+<span id="111">111</span>
+<span id="112">112</span>
+<span id="113">113</span>
+<span id="114">114</span>
+<span id="115">115</span>
+<span id="116">116</span>
+<span id="117">117</span>
+<span id="118">118</span>
+<span id="119">119</span>
+<span id="120">120</span>
+<span id="121">121</span>
+<span id="122">122</span>
+<span id="123">123</span>
+<span id="124">124</span>
+<span id="125">125</span>
+<span id="126">126</span>
+<span id="127">127</span>
+<span id="128">128</span>
+<span id="129">129</span>
+<span id="130">130</span>
+<span id="131">131</span>
+<span id="132">132</span>
+<span id="133">133</span>
+<span id="134">134</span>
+</pre><pre class="rust"><code><span class="comment">// Smoldot
+// Copyright (C) 2019-2022  Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later WITH Classpath-exception-2.0
+
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+
+</span><span class="doccomment">//! A multihash is a small data structure containing a code (an integer) and data. The format of
+//! the data depends on the code.
+//!
+//! See &lt;https://github.com/multiformats/multihash&gt;
+
+</span><span class="kw">use </span>alloc::vec::Vec;
+<span class="kw">use </span>core::fmt;
+
+<span class="kw">use </span><span class="kw">crate</span>::util;
+
+<span class="doccomment">/// A multihash made of a code and a slice of data.
+///
+/// This type is a *reference* to a multihash stored somewhere else, such as in a `Vec&lt;u8&gt;`. You
+/// are supposed to store a `MultihashRef` for long term usage. Instead, store a `Vec&lt;u8&gt;` for
+/// example. The `MultihashRef` can be constructed from that `Vec&lt;u8&gt;` if it needs decoding.
+</span><span class="kw">pub struct </span>MultihashRef&lt;<span class="lifetime">&#39;a</span>&gt;(u32, <span class="kw-2">&amp;</span><span class="lifetime">&#39;a </span>[u8]);
+
+<span class="kw">impl</span>&lt;<span class="lifetime">&#39;a</span>&gt; MultihashRef&lt;<span class="lifetime">&#39;a</span>&gt; {
+    <span class="doccomment">/// Builds a multihash from the &quot;identity&quot; hash algorithm code and the provided data.
+    ///
+    /// Calling [`MultihashRef::data`] on the returned value will always yield back the same data
+    /// as was passed as parameter.
+    </span><span class="kw">pub fn </span>identity(data: <span class="kw-2">&amp;</span><span class="lifetime">&#39;a </span>[u8]) -&gt; <span class="self">Self </span>{
+        MultihashRef(<span class="number">0</span>, data)
+    }
+
+    <span class="doccomment">/// Returns the code stored in this multihash.
+    </span><span class="kw">pub fn </span>hash_algorithm_code(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; u32 {
+        <span class="self">self</span>.<span class="number">0
+    </span>}
+
+    <span class="doccomment">/// Returns the data stored in this multihash.
+    </span><span class="kw">pub fn </span>data(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span><span class="lifetime">&#39;a </span>[u8] {
+        <span class="self">self</span>.<span class="number">1
+    </span>}
+
+    <span class="doccomment">/// Checks whether `input` is a valid multihash.
+    </span><span class="kw">pub fn </span>from_bytes(input: <span class="kw-2">&amp;</span><span class="lifetime">&#39;a </span>[u8]) -&gt; <span class="prelude-ty">Result</span>&lt;MultihashRef, FromBytesError&gt; {
+        <span class="kw">match </span>nom::combinator::all_consuming(multihash::&lt;nom::error::Error&lt;<span class="kw-2">&amp;</span>[u8]&gt;&gt;)(input) {
+            <span class="prelude-val">Ok</span>((_rest, multihash)) =&gt; {
+                <span class="macro">debug_assert!</span>(_rest.is_empty());
+                <span class="prelude-val">Ok</span>(multihash)
+            }
+            <span class="prelude-val">Err</span>(<span class="kw">_</span>) =&gt; <span class="prelude-val">Err</span>(FromBytesError::DecodeError),
+        }
+    }
+
+    <span class="doccomment">/// Checks whether `input` is a valid multihash.
+    ///
+    /// Contrary to [`MultihashRef::from_bytes`], doesn&#39;t return an error if the slice is too long
+    /// but returns the remainder.
+    </span><span class="kw">pub fn </span>from_bytes_partial(input: <span class="kw-2">&amp;</span><span class="lifetime">&#39;a </span>[u8]) -&gt; <span class="prelude-ty">Result</span>&lt;(MultihashRef, <span class="kw-2">&amp;</span><span class="lifetime">&#39;a </span>[u8]), FromBytesError&gt; {
+        <span class="kw">match </span>multihash::&lt;nom::error::Error&lt;<span class="kw-2">&amp;</span>[u8]&gt;&gt;(input) {
+            <span class="prelude-val">Ok</span>((rest, multihash)) =&gt; <span class="prelude-val">Ok</span>((multihash, rest)),
+            <span class="prelude-val">Err</span>(<span class="kw">_</span>) =&gt; <span class="prelude-val">Err</span>(FromBytesError::DecodeError),
+        }
+    }
+
+    <span class="doccomment">/// Returns an iterator to a list of buffers that, when concatenated together, form the
+    /// binary representation of this multihash.
+    </span><span class="kw">pub fn </span>as_bytes(<span class="kw-2">&amp;</span><span class="lifetime">&#39;_ </span><span class="self">self</span>) -&gt; <span class="kw">impl </span>Iterator&lt;Item = <span class="kw">impl </span>AsRef&lt;[u8]&gt; + <span class="lifetime">&#39;_</span>&gt; + <span class="lifetime">&#39;_ </span>{
+        <span class="kw">let </span>code = util::leb128::encode(<span class="self">self</span>.<span class="number">0</span>).collect::&lt;arrayvec::ArrayVec&lt;u8, <span class="number">40</span>&gt;&gt;(); <span class="comment">// TODO: actual length?
+        </span><span class="kw">let </span>len = util::leb128::encode_usize(<span class="self">self</span>.<span class="number">1</span>.len()).collect::&lt;arrayvec::ArrayVec&lt;u8, <span class="number">40</span>&gt;&gt;(); <span class="comment">// TODO: actual length?
+        </span>[either::Left(code), either::Left(len), either::Right(<span class="self">self</span>.<span class="number">1</span>)].into_iter()
+    }
+
+    <span class="doccomment">/// Turns this multihash into a `Vec&lt;u8&gt;`.
+    </span><span class="kw">pub fn </span>to_vec(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; Vec&lt;u8&gt; {
+        <span class="kw">let </span><span class="kw-2">mut </span>out = Vec::with_capacity(<span class="number">7 </span>+ <span class="number">7 </span>+ <span class="self">self</span>.<span class="number">1</span>.len());
+        <span class="kw">for </span>slice <span class="kw">in </span><span class="self">self</span>.as_bytes() {
+            out.extend_from_slice(slice.as_ref());
+        }
+        out
+    }
+}
+
+<span class="doccomment">/// Error when turning bytes into a [`MultihashRef`].
+</span><span class="attribute">#[derive(Debug, derive_more::Display, Clone)]
+</span><span class="kw">pub enum </span>FromBytesError {
+    <span class="doccomment">/// The multihash is invalid.
+    </span>DecodeError,
+}
+
+<span class="kw">impl</span>&lt;<span class="lifetime">&#39;a</span>&gt; fmt::Debug <span class="kw">for </span>MultihashRef&lt;<span class="lifetime">&#39;a</span>&gt; {
+    <span class="kw">fn </span>fmt(<span class="kw-2">&amp;</span><span class="self">self</span>, f: <span class="kw-2">&amp;mut </span>fmt::Formatter&lt;<span class="lifetime">&#39;_</span>&gt;) -&gt; fmt::Result {
+        fmt::Display::fmt(<span class="self">self</span>, f)
+    }
+}
+
+<span class="kw">impl</span>&lt;<span class="lifetime">&#39;a</span>&gt; fmt::Display <span class="kw">for </span>MultihashRef&lt;<span class="lifetime">&#39;a</span>&gt; {
+    <span class="kw">fn </span>fmt(<span class="kw-2">&amp;</span><span class="self">self</span>, f: <span class="kw-2">&amp;mut </span>fmt::Formatter&lt;<span class="lifetime">&#39;_</span>&gt;) -&gt; fmt::Result {
+        <span class="kw">let </span>base58 = bs58::encode(<span class="kw-2">&amp;</span><span class="self">self</span>.to_vec()).into_string();
+        <span class="macro">write!</span>(f, <span class="string">&quot;{}&quot;</span>, base58)
+    }
+}
+
+<span class="kw">impl</span>&lt;<span class="lifetime">&#39;a</span>&gt; TryFrom&lt;<span class="kw-2">&amp;</span><span class="lifetime">&#39;a </span>[u8]&gt; <span class="kw">for </span>MultihashRef&lt;<span class="lifetime">&#39;a</span>&gt; {
+    <span class="kw">type </span>Error = FromBytesError;
+
+    <span class="kw">fn </span>try_from(input: <span class="kw-2">&amp;</span><span class="lifetime">&#39;a </span>[u8]) -&gt; <span class="prelude-ty">Result</span>&lt;<span class="self">Self</span>, <span class="self">Self</span>::Error&gt; {
+        <span class="self">Self</span>::from_bytes(input)
+    }
+}
+
+<span class="kw">fn </span>multihash&lt;<span class="lifetime">&#39;a</span>, E: nom::error::ParseError&lt;<span class="kw-2">&amp;</span><span class="lifetime">&#39;a </span>[u8]&gt;&gt;(
+    bytes: <span class="kw-2">&amp;</span><span class="lifetime">&#39;a </span>[u8],
+) -&gt; nom::IResult&lt;<span class="kw-2">&amp;</span><span class="lifetime">&#39;a </span>[u8], MultihashRef&lt;<span class="lifetime">&#39;a</span>&gt;, E&gt; {
+    nom::combinator::map(
+        nom::sequence::tuple((
+            nom::combinator::map_opt(<span class="kw">crate</span>::util::leb128::nom_leb128_usize, |c| {
+                u32::try_from(c).ok()
+            }),
+            nom::multi::length_data(<span class="kw">crate</span>::util::leb128::nom_leb128_usize),
+        )),
+        |(code, data)| MultihashRef(code, data),
+    )(bytes)
+}
+</code></pre></div>
+</section></div></main><div id="rustdoc-vars" data-root-path="../../../" data-current-crate="smoldot" data-themes="ayu,dark,light" data-resource-suffix="" data-rustdoc-version="1.65.0 (897e37553 2022-11-02)" ></div></body></html>

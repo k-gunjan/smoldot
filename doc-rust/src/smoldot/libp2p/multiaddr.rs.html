@@ -1,0 +1,1194 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `src/libp2p/multiaddr.rs`."><meta name="keywords" content="rust, rustlang, rust-lang"><title>multiaddr.rs - source</title><link rel="preload" as="font" type="font/woff2" crossorigin href="../../../SourceSerif4-Regular.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../../FiraSans-Regular.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../../FiraSans-Medium.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../../SourceCodePro-Regular.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../../SourceSerif4-Bold.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../../SourceCodePro-Semibold.ttf.woff2"><link rel="stylesheet" href="../../../normalize.css"><link rel="stylesheet" href="../../../rustdoc.css" id="mainThemeStyle"><link rel="stylesheet" href="../../../ayu.css" disabled><link rel="stylesheet" href="../../../dark.css" disabled><link rel="stylesheet" href="../../../light.css" id="themeStyle"><script id="default-settings" ></script><script src="../../../storage.js"></script><script defer src="../../../source-script.js"></script><script defer src="../../../source-files.js"></script><script defer src="../../../main.js"></script><noscript><link rel="stylesheet" href="../../../noscript.css"></noscript><link rel="alternate icon" type="image/png" href="../../../favicon-16x16.png"><link rel="alternate icon" type="image/png" href="../../../favicon-32x32.png"><link rel="icon" type="image/svg+xml" href="../../../favicon.svg"></head><body class="rustdoc source"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="mobile-topbar"><button class="sidebar-menu-toggle">&#9776;</button><a class="sidebar-logo" href="../../../smoldot/index.html"><div class="logo-container"><img class="rust-logo" src="../../../rust-logo.svg" alt="logo"></div></a><h2 class="location"></h2></nav><nav class="sidebar"><a class="sidebar-logo" href="../../../smoldot/index.html"><div class="logo-container"><img class="rust-logo" src="../../../rust-logo.svg" alt="logo"></div></a></nav><main><div class="width-limiter"><div class="sub-container"><a class="sub-logo-container" href="../../../smoldot/index.html"><img class="rust-logo" src="../../../rust-logo.svg" alt="logo"></a><nav class="sub"><form class="search-form"><div class="search-container"><span></span><input class="search-input" name="search" autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"><div id="help-button" title="help" tabindex="-1"><button type="button">?</button></div><div id="settings-menu" tabindex="-1"><a href="../../../settings.html" title="settings"><img width="22" height="22" alt="Change settings" src="../../../wheel.svg"></a></div></div></form></nav></div><section id="main-content" class="content"><div class="example-wrap"><pre class="line-numbers"><span id="1">1</span>
+<span id="2">2</span>
+<span id="3">3</span>
+<span id="4">4</span>
+<span id="5">5</span>
+<span id="6">6</span>
+<span id="7">7</span>
+<span id="8">8</span>
+<span id="9">9</span>
+<span id="10">10</span>
+<span id="11">11</span>
+<span id="12">12</span>
+<span id="13">13</span>
+<span id="14">14</span>
+<span id="15">15</span>
+<span id="16">16</span>
+<span id="17">17</span>
+<span id="18">18</span>
+<span id="19">19</span>
+<span id="20">20</span>
+<span id="21">21</span>
+<span id="22">22</span>
+<span id="23">23</span>
+<span id="24">24</span>
+<span id="25">25</span>
+<span id="26">26</span>
+<span id="27">27</span>
+<span id="28">28</span>
+<span id="29">29</span>
+<span id="30">30</span>
+<span id="31">31</span>
+<span id="32">32</span>
+<span id="33">33</span>
+<span id="34">34</span>
+<span id="35">35</span>
+<span id="36">36</span>
+<span id="37">37</span>
+<span id="38">38</span>
+<span id="39">39</span>
+<span id="40">40</span>
+<span id="41">41</span>
+<span id="42">42</span>
+<span id="43">43</span>
+<span id="44">44</span>
+<span id="45">45</span>
+<span id="46">46</span>
+<span id="47">47</span>
+<span id="48">48</span>
+<span id="49">49</span>
+<span id="50">50</span>
+<span id="51">51</span>
+<span id="52">52</span>
+<span id="53">53</span>
+<span id="54">54</span>
+<span id="55">55</span>
+<span id="56">56</span>
+<span id="57">57</span>
+<span id="58">58</span>
+<span id="59">59</span>
+<span id="60">60</span>
+<span id="61">61</span>
+<span id="62">62</span>
+<span id="63">63</span>
+<span id="64">64</span>
+<span id="65">65</span>
+<span id="66">66</span>
+<span id="67">67</span>
+<span id="68">68</span>
+<span id="69">69</span>
+<span id="70">70</span>
+<span id="71">71</span>
+<span id="72">72</span>
+<span id="73">73</span>
+<span id="74">74</span>
+<span id="75">75</span>
+<span id="76">76</span>
+<span id="77">77</span>
+<span id="78">78</span>
+<span id="79">79</span>
+<span id="80">80</span>
+<span id="81">81</span>
+<span id="82">82</span>
+<span id="83">83</span>
+<span id="84">84</span>
+<span id="85">85</span>
+<span id="86">86</span>
+<span id="87">87</span>
+<span id="88">88</span>
+<span id="89">89</span>
+<span id="90">90</span>
+<span id="91">91</span>
+<span id="92">92</span>
+<span id="93">93</span>
+<span id="94">94</span>
+<span id="95">95</span>
+<span id="96">96</span>
+<span id="97">97</span>
+<span id="98">98</span>
+<span id="99">99</span>
+<span id="100">100</span>
+<span id="101">101</span>
+<span id="102">102</span>
+<span id="103">103</span>
+<span id="104">104</span>
+<span id="105">105</span>
+<span id="106">106</span>
+<span id="107">107</span>
+<span id="108">108</span>
+<span id="109">109</span>
+<span id="110">110</span>
+<span id="111">111</span>
+<span id="112">112</span>
+<span id="113">113</span>
+<span id="114">114</span>
+<span id="115">115</span>
+<span id="116">116</span>
+<span id="117">117</span>
+<span id="118">118</span>
+<span id="119">119</span>
+<span id="120">120</span>
+<span id="121">121</span>
+<span id="122">122</span>
+<span id="123">123</span>
+<span id="124">124</span>
+<span id="125">125</span>
+<span id="126">126</span>
+<span id="127">127</span>
+<span id="128">128</span>
+<span id="129">129</span>
+<span id="130">130</span>
+<span id="131">131</span>
+<span id="132">132</span>
+<span id="133">133</span>
+<span id="134">134</span>
+<span id="135">135</span>
+<span id="136">136</span>
+<span id="137">137</span>
+<span id="138">138</span>
+<span id="139">139</span>
+<span id="140">140</span>
+<span id="141">141</span>
+<span id="142">142</span>
+<span id="143">143</span>
+<span id="144">144</span>
+<span id="145">145</span>
+<span id="146">146</span>
+<span id="147">147</span>
+<span id="148">148</span>
+<span id="149">149</span>
+<span id="150">150</span>
+<span id="151">151</span>
+<span id="152">152</span>
+<span id="153">153</span>
+<span id="154">154</span>
+<span id="155">155</span>
+<span id="156">156</span>
+<span id="157">157</span>
+<span id="158">158</span>
+<span id="159">159</span>
+<span id="160">160</span>
+<span id="161">161</span>
+<span id="162">162</span>
+<span id="163">163</span>
+<span id="164">164</span>
+<span id="165">165</span>
+<span id="166">166</span>
+<span id="167">167</span>
+<span id="168">168</span>
+<span id="169">169</span>
+<span id="170">170</span>
+<span id="171">171</span>
+<span id="172">172</span>
+<span id="173">173</span>
+<span id="174">174</span>
+<span id="175">175</span>
+<span id="176">176</span>
+<span id="177">177</span>
+<span id="178">178</span>
+<span id="179">179</span>
+<span id="180">180</span>
+<span id="181">181</span>
+<span id="182">182</span>
+<span id="183">183</span>
+<span id="184">184</span>
+<span id="185">185</span>
+<span id="186">186</span>
+<span id="187">187</span>
+<span id="188">188</span>
+<span id="189">189</span>
+<span id="190">190</span>
+<span id="191">191</span>
+<span id="192">192</span>
+<span id="193">193</span>
+<span id="194">194</span>
+<span id="195">195</span>
+<span id="196">196</span>
+<span id="197">197</span>
+<span id="198">198</span>
+<span id="199">199</span>
+<span id="200">200</span>
+<span id="201">201</span>
+<span id="202">202</span>
+<span id="203">203</span>
+<span id="204">204</span>
+<span id="205">205</span>
+<span id="206">206</span>
+<span id="207">207</span>
+<span id="208">208</span>
+<span id="209">209</span>
+<span id="210">210</span>
+<span id="211">211</span>
+<span id="212">212</span>
+<span id="213">213</span>
+<span id="214">214</span>
+<span id="215">215</span>
+<span id="216">216</span>
+<span id="217">217</span>
+<span id="218">218</span>
+<span id="219">219</span>
+<span id="220">220</span>
+<span id="221">221</span>
+<span id="222">222</span>
+<span id="223">223</span>
+<span id="224">224</span>
+<span id="225">225</span>
+<span id="226">226</span>
+<span id="227">227</span>
+<span id="228">228</span>
+<span id="229">229</span>
+<span id="230">230</span>
+<span id="231">231</span>
+<span id="232">232</span>
+<span id="233">233</span>
+<span id="234">234</span>
+<span id="235">235</span>
+<span id="236">236</span>
+<span id="237">237</span>
+<span id="238">238</span>
+<span id="239">239</span>
+<span id="240">240</span>
+<span id="241">241</span>
+<span id="242">242</span>
+<span id="243">243</span>
+<span id="244">244</span>
+<span id="245">245</span>
+<span id="246">246</span>
+<span id="247">247</span>
+<span id="248">248</span>
+<span id="249">249</span>
+<span id="250">250</span>
+<span id="251">251</span>
+<span id="252">252</span>
+<span id="253">253</span>
+<span id="254">254</span>
+<span id="255">255</span>
+<span id="256">256</span>
+<span id="257">257</span>
+<span id="258">258</span>
+<span id="259">259</span>
+<span id="260">260</span>
+<span id="261">261</span>
+<span id="262">262</span>
+<span id="263">263</span>
+<span id="264">264</span>
+<span id="265">265</span>
+<span id="266">266</span>
+<span id="267">267</span>
+<span id="268">268</span>
+<span id="269">269</span>
+<span id="270">270</span>
+<span id="271">271</span>
+<span id="272">272</span>
+<span id="273">273</span>
+<span id="274">274</span>
+<span id="275">275</span>
+<span id="276">276</span>
+<span id="277">277</span>
+<span id="278">278</span>
+<span id="279">279</span>
+<span id="280">280</span>
+<span id="281">281</span>
+<span id="282">282</span>
+<span id="283">283</span>
+<span id="284">284</span>
+<span id="285">285</span>
+<span id="286">286</span>
+<span id="287">287</span>
+<span id="288">288</span>
+<span id="289">289</span>
+<span id="290">290</span>
+<span id="291">291</span>
+<span id="292">292</span>
+<span id="293">293</span>
+<span id="294">294</span>
+<span id="295">295</span>
+<span id="296">296</span>
+<span id="297">297</span>
+<span id="298">298</span>
+<span id="299">299</span>
+<span id="300">300</span>
+<span id="301">301</span>
+<span id="302">302</span>
+<span id="303">303</span>
+<span id="304">304</span>
+<span id="305">305</span>
+<span id="306">306</span>
+<span id="307">307</span>
+<span id="308">308</span>
+<span id="309">309</span>
+<span id="310">310</span>
+<span id="311">311</span>
+<span id="312">312</span>
+<span id="313">313</span>
+<span id="314">314</span>
+<span id="315">315</span>
+<span id="316">316</span>
+<span id="317">317</span>
+<span id="318">318</span>
+<span id="319">319</span>
+<span id="320">320</span>
+<span id="321">321</span>
+<span id="322">322</span>
+<span id="323">323</span>
+<span id="324">324</span>
+<span id="325">325</span>
+<span id="326">326</span>
+<span id="327">327</span>
+<span id="328">328</span>
+<span id="329">329</span>
+<span id="330">330</span>
+<span id="331">331</span>
+<span id="332">332</span>
+<span id="333">333</span>
+<span id="334">334</span>
+<span id="335">335</span>
+<span id="336">336</span>
+<span id="337">337</span>
+<span id="338">338</span>
+<span id="339">339</span>
+<span id="340">340</span>
+<span id="341">341</span>
+<span id="342">342</span>
+<span id="343">343</span>
+<span id="344">344</span>
+<span id="345">345</span>
+<span id="346">346</span>
+<span id="347">347</span>
+<span id="348">348</span>
+<span id="349">349</span>
+<span id="350">350</span>
+<span id="351">351</span>
+<span id="352">352</span>
+<span id="353">353</span>
+<span id="354">354</span>
+<span id="355">355</span>
+<span id="356">356</span>
+<span id="357">357</span>
+<span id="358">358</span>
+<span id="359">359</span>
+<span id="360">360</span>
+<span id="361">361</span>
+<span id="362">362</span>
+<span id="363">363</span>
+<span id="364">364</span>
+<span id="365">365</span>
+<span id="366">366</span>
+<span id="367">367</span>
+<span id="368">368</span>
+<span id="369">369</span>
+<span id="370">370</span>
+<span id="371">371</span>
+<span id="372">372</span>
+<span id="373">373</span>
+<span id="374">374</span>
+<span id="375">375</span>
+<span id="376">376</span>
+<span id="377">377</span>
+<span id="378">378</span>
+<span id="379">379</span>
+<span id="380">380</span>
+<span id="381">381</span>
+<span id="382">382</span>
+<span id="383">383</span>
+<span id="384">384</span>
+<span id="385">385</span>
+<span id="386">386</span>
+<span id="387">387</span>
+<span id="388">388</span>
+<span id="389">389</span>
+<span id="390">390</span>
+<span id="391">391</span>
+<span id="392">392</span>
+<span id="393">393</span>
+<span id="394">394</span>
+<span id="395">395</span>
+<span id="396">396</span>
+<span id="397">397</span>
+<span id="398">398</span>
+<span id="399">399</span>
+<span id="400">400</span>
+<span id="401">401</span>
+<span id="402">402</span>
+<span id="403">403</span>
+<span id="404">404</span>
+<span id="405">405</span>
+<span id="406">406</span>
+<span id="407">407</span>
+<span id="408">408</span>
+<span id="409">409</span>
+<span id="410">410</span>
+<span id="411">411</span>
+<span id="412">412</span>
+<span id="413">413</span>
+<span id="414">414</span>
+<span id="415">415</span>
+<span id="416">416</span>
+<span id="417">417</span>
+<span id="418">418</span>
+<span id="419">419</span>
+<span id="420">420</span>
+<span id="421">421</span>
+<span id="422">422</span>
+<span id="423">423</span>
+<span id="424">424</span>
+<span id="425">425</span>
+<span id="426">426</span>
+<span id="427">427</span>
+<span id="428">428</span>
+<span id="429">429</span>
+<span id="430">430</span>
+<span id="431">431</span>
+<span id="432">432</span>
+<span id="433">433</span>
+<span id="434">434</span>
+<span id="435">435</span>
+<span id="436">436</span>
+<span id="437">437</span>
+<span id="438">438</span>
+<span id="439">439</span>
+<span id="440">440</span>
+<span id="441">441</span>
+<span id="442">442</span>
+<span id="443">443</span>
+<span id="444">444</span>
+<span id="445">445</span>
+<span id="446">446</span>
+<span id="447">447</span>
+<span id="448">448</span>
+<span id="449">449</span>
+<span id="450">450</span>
+<span id="451">451</span>
+<span id="452">452</span>
+<span id="453">453</span>
+<span id="454">454</span>
+<span id="455">455</span>
+<span id="456">456</span>
+<span id="457">457</span>
+<span id="458">458</span>
+<span id="459">459</span>
+<span id="460">460</span>
+<span id="461">461</span>
+<span id="462">462</span>
+<span id="463">463</span>
+<span id="464">464</span>
+<span id="465">465</span>
+<span id="466">466</span>
+<span id="467">467</span>
+<span id="468">468</span>
+<span id="469">469</span>
+<span id="470">470</span>
+<span id="471">471</span>
+<span id="472">472</span>
+<span id="473">473</span>
+<span id="474">474</span>
+<span id="475">475</span>
+<span id="476">476</span>
+<span id="477">477</span>
+<span id="478">478</span>
+<span id="479">479</span>
+<span id="480">480</span>
+<span id="481">481</span>
+<span id="482">482</span>
+<span id="483">483</span>
+<span id="484">484</span>
+<span id="485">485</span>
+<span id="486">486</span>
+<span id="487">487</span>
+<span id="488">488</span>
+<span id="489">489</span>
+<span id="490">490</span>
+<span id="491">491</span>
+<span id="492">492</span>
+<span id="493">493</span>
+<span id="494">494</span>
+<span id="495">495</span>
+<span id="496">496</span>
+<span id="497">497</span>
+<span id="498">498</span>
+<span id="499">499</span>
+<span id="500">500</span>
+<span id="501">501</span>
+<span id="502">502</span>
+<span id="503">503</span>
+<span id="504">504</span>
+<span id="505">505</span>
+<span id="506">506</span>
+<span id="507">507</span>
+<span id="508">508</span>
+<span id="509">509</span>
+<span id="510">510</span>
+<span id="511">511</span>
+<span id="512">512</span>
+<span id="513">513</span>
+<span id="514">514</span>
+<span id="515">515</span>
+<span id="516">516</span>
+<span id="517">517</span>
+<span id="518">518</span>
+<span id="519">519</span>
+<span id="520">520</span>
+<span id="521">521</span>
+<span id="522">522</span>
+<span id="523">523</span>
+<span id="524">524</span>
+<span id="525">525</span>
+<span id="526">526</span>
+<span id="527">527</span>
+<span id="528">528</span>
+<span id="529">529</span>
+<span id="530">530</span>
+<span id="531">531</span>
+<span id="532">532</span>
+<span id="533">533</span>
+<span id="534">534</span>
+<span id="535">535</span>
+<span id="536">536</span>
+<span id="537">537</span>
+<span id="538">538</span>
+<span id="539">539</span>
+<span id="540">540</span>
+<span id="541">541</span>
+<span id="542">542</span>
+<span id="543">543</span>
+<span id="544">544</span>
+<span id="545">545</span>
+<span id="546">546</span>
+<span id="547">547</span>
+<span id="548">548</span>
+<span id="549">549</span>
+<span id="550">550</span>
+<span id="551">551</span>
+<span id="552">552</span>
+<span id="553">553</span>
+<span id="554">554</span>
+<span id="555">555</span>
+<span id="556">556</span>
+<span id="557">557</span>
+<span id="558">558</span>
+<span id="559">559</span>
+<span id="560">560</span>
+<span id="561">561</span>
+<span id="562">562</span>
+<span id="563">563</span>
+<span id="564">564</span>
+<span id="565">565</span>
+<span id="566">566</span>
+<span id="567">567</span>
+<span id="568">568</span>
+<span id="569">569</span>
+<span id="570">570</span>
+<span id="571">571</span>
+<span id="572">572</span>
+<span id="573">573</span>
+<span id="574">574</span>
+<span id="575">575</span>
+<span id="576">576</span>
+<span id="577">577</span>
+<span id="578">578</span>
+<span id="579">579</span>
+<span id="580">580</span>
+<span id="581">581</span>
+<span id="582">582</span>
+<span id="583">583</span>
+<span id="584">584</span>
+<span id="585">585</span>
+<span id="586">586</span>
+<span id="587">587</span>
+<span id="588">588</span>
+<span id="589">589</span>
+<span id="590">590</span>
+<span id="591">591</span>
+<span id="592">592</span>
+<span id="593">593</span>
+<span id="594">594</span>
+<span id="595">595</span>
+<span id="596">596</span>
+</pre><pre class="rust"><code><span class="comment">// Smoldot
+// Copyright (C) 2019-2022  Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later WITH Classpath-exception-2.0
+
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+
+// TODO: needs documentation
+
+</span><span class="kw">use </span>alloc::{borrow::Cow, vec::Vec};
+<span class="kw">use </span>core::{
+    fmt, iter,
+    str::{<span class="self">self</span>, FromStr},
+};
+
+<span class="kw">use </span><span class="kw">super</span>::multihash;
+
+<span class="attribute">#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+</span><span class="kw">pub struct </span>Multiaddr {
+    bytes: Vec&lt;u8&gt;,
+}
+
+<span class="kw">impl </span>Multiaddr {
+    <span class="doccomment">/// Creates a new empty `Multiaddr`.
+    </span><span class="kw">pub fn </span>empty() -&gt; <span class="self">Self </span>{
+        Multiaddr { bytes: Vec::new() }
+    }
+
+    <span class="doccomment">/// Pushes a protocol at the end of this `Multiaddr`.
+    </span><span class="kw">pub fn </span>push(<span class="kw-2">&amp;mut </span><span class="self">self</span>, protocol: ProtocolRef) {
+        <span class="kw">for </span>slice <span class="kw">in </span>protocol.as_bytes() {
+            <span class="self">self</span>.bytes.extend(slice.as_ref());
+        }
+    }
+
+    <span class="doccomment">/// Shrinks the memory used by the underlying container to its size.
+    </span><span class="kw">pub fn </span>shrink_to_fit(<span class="kw-2">&amp;mut </span><span class="self">self</span>) {
+        <span class="self">self</span>.bytes.shrink_to_fit();
+    }
+
+    <span class="doccomment">/// Returns the serialized version of this `Multiaddr`.
+    </span><span class="kw">pub fn </span>to_vec(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; Vec&lt;u8&gt; {
+        <span class="self">self</span>.bytes.clone()
+    }
+
+    <span class="doccomment">/// Returns the list of components of the multiaddress.
+    </span><span class="kw">pub fn </span>iter(<span class="kw-2">&amp;</span><span class="lifetime">&#39;_ </span><span class="self">self</span>) -&gt; <span class="kw">impl </span>Iterator&lt;Item = ProtocolRef&lt;<span class="lifetime">&#39;_</span>&gt;&gt; + <span class="lifetime">&#39;_ </span>{
+        <span class="kw">let </span><span class="kw-2">mut </span>iter =
+            nom::combinator::iterator(<span class="kw-2">&amp;</span><span class="self">self</span>.bytes[..], protocol::&lt;nom::error::Error&lt;<span class="kw-2">&amp;</span><span class="lifetime">&#39;_ </span>[u8]&gt;&gt;);
+        iter::from_fn(<span class="kw">move </span>|| (<span class="kw-2">&amp;mut </span>iter).next())
+    }
+
+    <span class="doccomment">/// Pops the last protocol from the list.
+    ///
+    /// # Panic
+    ///
+    /// Panics if the `Multiaddr` is empty.
+    ///
+    </span><span class="kw">pub fn </span>pop(<span class="kw-2">&amp;mut </span><span class="self">self</span>) {
+        <span class="kw">let </span>remain = {
+            <span class="kw">let </span><span class="kw-2">mut </span>iter = nom::combinator::iterator(
+                <span class="kw-2">&amp;</span><span class="self">self</span>.bytes[..],
+                nom::combinator::recognize(protocol::&lt;nom::error::Error&lt;<span class="kw-2">&amp;</span><span class="lifetime">&#39;_ </span>[u8]&gt;&gt;),
+            );
+
+            <span class="kw">let </span>bytes_prefix = iter.last().unwrap().len();
+            <span class="self">self</span>.bytes.len() - bytes_prefix
+        };
+
+        <span class="self">self</span>.bytes.truncate(remain);
+    }
+}
+
+<span class="kw">impl </span>AsRef&lt;[u8]&gt; <span class="kw">for </span>Multiaddr {
+    <span class="kw">fn </span>as_ref(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span>[u8] {
+        <span class="kw-2">&amp;</span><span class="self">self</span>.bytes
+    }
+}
+
+<span class="kw">impl</span>&lt;<span class="lifetime">&#39;a</span>&gt; From&lt;ProtocolRef&lt;<span class="lifetime">&#39;a</span>&gt;&gt; <span class="kw">for </span>Multiaddr {
+    <span class="kw">fn </span>from(proto: ProtocolRef&lt;<span class="lifetime">&#39;a</span>&gt;) -&gt; Multiaddr {
+        <span class="kw">let </span>bytes = proto.as_bytes().fold(Vec::new(), |<span class="kw-2">mut </span>a, b| {
+            a.extend_from_slice(b.as_ref());
+            a
+        });
+
+        Multiaddr { bytes }
+    }
+}
+
+<span class="kw">impl </span>FromStr <span class="kw">for </span>Multiaddr {
+    <span class="kw">type </span><span class="prelude-val">Err </span>= ParseError;
+
+    <span class="kw">fn </span>from_str(input: <span class="kw-2">&amp;</span>str) -&gt; <span class="prelude-ty">Result</span>&lt;<span class="self">Self</span>, <span class="self">Self</span>::Err&gt; {
+        <span class="kw">let </span><span class="kw-2">mut </span>bytes = Vec::with_capacity(input.len());
+        <span class="kw">let </span><span class="kw-2">mut </span>parts = input.split(<span class="string">&#39;/&#39;</span>).peekable();
+
+        <span class="kw">if </span>parts.next() != <span class="prelude-val">Some</span>(<span class="string">&quot;&quot;</span>) {
+            <span class="kw">return </span><span class="prelude-val">Err</span>(ParseError::InvalidMultiaddr);
+        }
+
+        <span class="kw">while </span>parts.peek().is_some() {
+            <span class="kw">let </span>protocol = ProtocolRef::from_str_parts(<span class="kw-2">&amp;mut </span>parts)<span class="question-mark">?</span>;
+            <span class="kw">for </span>slice <span class="kw">in </span>protocol.as_bytes() {
+                bytes.extend_from_slice(slice.as_ref());
+            }
+        }
+
+        <span class="prelude-val">Ok</span>(Multiaddr { bytes })
+    }
+}
+
+<span class="kw">impl</span>&lt;<span class="lifetime">&#39;a</span>&gt; FromIterator&lt;ProtocolRef&lt;<span class="lifetime">&#39;a</span>&gt;&gt; <span class="kw">for </span>Multiaddr {
+    <span class="kw">fn </span>from_iter&lt;T&gt;(iter: T) -&gt; <span class="self">Self
+    </span><span class="kw">where
+        </span>T: IntoIterator&lt;Item = ProtocolRef&lt;<span class="lifetime">&#39;a</span>&gt;&gt;,
+    {
+        <span class="kw">let </span><span class="kw-2">mut </span>bytes = Vec::new();
+        <span class="kw">for </span>protocol <span class="kw">in </span>iter {
+            <span class="kw">for </span>slice <span class="kw">in </span>protocol.as_bytes() {
+                bytes.extend(slice.as_ref());
+            }
+        }
+        Multiaddr { bytes }
+    }
+}
+
+<span class="kw">impl </span>TryFrom&lt;Vec&lt;u8&gt;&gt; <span class="kw">for </span>Multiaddr {
+    <span class="kw">type </span>Error = FromVecError;
+
+    <span class="kw">fn </span>try_from(bytes: Vec&lt;u8&gt;) -&gt; <span class="prelude-ty">Result</span>&lt;<span class="self">Self</span>, <span class="self">Self</span>::Error&gt; {
+        <span class="comment">// Check whether this is indeed a valid list of protocols.
+        </span><span class="kw">if </span>nom::combinator::all_consuming(nom::multi::fold_many0(
+            protocol::&lt;nom::error::Error&lt;<span class="kw-2">&amp;</span>[u8]&gt;&gt;,
+            || (),
+            |(), <span class="kw">_</span>| (),
+        ))(<span class="kw-2">&amp;</span>bytes)
+        .is_err()
+        {
+            <span class="kw">return </span><span class="prelude-val">Err</span>(FromVecError {});
+        }
+
+        <span class="prelude-val">Ok</span>(Multiaddr { bytes })
+    }
+}
+
+<span class="kw">impl </span>fmt::Debug <span class="kw">for </span>Multiaddr {
+    <span class="kw">fn </span>fmt(<span class="kw-2">&amp;</span><span class="self">self</span>, f: <span class="kw-2">&amp;mut </span>fmt::Formatter) -&gt; fmt::Result {
+        fmt::Display::fmt(<span class="kw-2">&amp;</span><span class="self">self</span>, f)
+    }
+}
+
+<span class="kw">impl </span>fmt::Display <span class="kw">for </span>Multiaddr {
+    <span class="kw">fn </span>fmt(<span class="kw-2">&amp;</span><span class="self">self</span>, f: <span class="kw-2">&amp;mut </span>fmt::Formatter) -&gt; fmt::Result {
+        <span class="kw">for </span>protocol <span class="kw">in </span><span class="self">self</span>.iter() {
+            fmt::Display::fmt(<span class="kw-2">&amp;</span>protocol, f)<span class="question-mark">?</span>;
+        }
+
+        <span class="prelude-val">Ok</span>(())
+    }
+}
+
+<span class="comment">// TODO: more doc and properly derive Display
+</span><span class="attribute">#[derive(Debug, derive_more::Display, Clone, PartialEq, Eq)]
+</span><span class="kw">pub struct </span>FromVecError {}
+
+<span class="comment">// TODO: more doc and properly derive Display
+</span><span class="attribute">#[derive(Debug, derive_more::Display, Clone)]
+</span><span class="kw">pub enum </span>ParseError {
+    <span class="doccomment">/// A multiaddress must always start with `/`.
+    </span>InvalidMultiaddr,
+    UnexpectedEof,
+    UnrecognizedProtocol,
+    InvalidPort,
+    InvalidIp,
+    NotBase58,
+    InvalidDomainName,
+    InvalidMultihash(multihash::FromBytesError),
+    InvalidMemoryPayload,
+    InvalidMultibase,
+    InvalidBase64,
+}
+
+<span class="attribute">#[derive(Debug, Clone, PartialEq, Eq)]
+</span><span class="kw">pub enum </span>ProtocolRef&lt;<span class="lifetime">&#39;a</span>&gt; {
+    Dns(DomainNameRef&lt;<span class="lifetime">&#39;a</span>&gt;),
+    Dns4(DomainNameRef&lt;<span class="lifetime">&#39;a</span>&gt;),
+    Dns6(DomainNameRef&lt;<span class="lifetime">&#39;a</span>&gt;),
+    DnsAddr(DomainNameRef&lt;<span class="lifetime">&#39;a</span>&gt;),
+    Ip4([u8; <span class="number">4</span>]),
+    Ip6([u8; <span class="number">16</span>]),
+    P2p(Cow&lt;<span class="lifetime">&#39;a</span>, [u8]&gt;), <span class="comment">// TODO: a bit hacky because there&#39;s no &quot;owned&quot; equivalent to MultihashRef
+    </span>Quic,
+    Tcp(u16),
+    Tls,
+    Udp(u16),
+    Ws,
+    <span class="comment">// TODO: remove support for `/wss` in a long time (https://github.com/paritytech/smoldot/issues/1940)
+    </span>Wss,
+    <span class="comment">// TODO: unclear what the payload is; see https://github.com/multiformats/multiaddr/issues/127
+    </span>Memory(u64),
+    WebRTC,
+    <span class="doccomment">/// Contains the multihash of the TLS certificate.
+    </span>Certhash(Cow&lt;<span class="lifetime">&#39;a</span>, [u8]&gt;), <span class="comment">// TODO: a bit hacky because there&#39;s no &quot;owned&quot; equivalent to MultihashRef
+</span>}
+
+<span class="kw">impl</span>&lt;<span class="lifetime">&#39;a</span>&gt; ProtocolRef&lt;<span class="lifetime">&#39;a</span>&gt; {
+    <span class="doccomment">/// Attempts to extract a protocol from an iterator of `/`-separated components.
+    </span><span class="kw">pub fn </span>from_str_parts(<span class="kw-2">mut </span>iter: <span class="kw">impl </span>Iterator&lt;Item = <span class="kw-2">&amp;</span><span class="lifetime">&#39;a </span>str&gt;) -&gt; <span class="prelude-ty">Result</span>&lt;<span class="self">Self</span>, ParseError&gt; {
+        <span class="kw">match </span>iter.next().ok_or(ParseError::UnexpectedEof)<span class="question-mark">? </span>{
+            <span class="string">&quot;dns&quot; </span>=&gt; {
+                <span class="kw">let </span>addr = iter.next().ok_or(ParseError::UnexpectedEof)<span class="question-mark">?</span>;
+                <span class="prelude-val">Ok</span>(ProtocolRef::Dns(DomainNameRef::try_from(addr)<span class="question-mark">?</span>))
+            }
+            <span class="string">&quot;dns4&quot; </span>=&gt; {
+                <span class="kw">let </span>addr = iter.next().ok_or(ParseError::UnexpectedEof)<span class="question-mark">?</span>;
+                <span class="prelude-val">Ok</span>(ProtocolRef::Dns4(DomainNameRef::try_from(addr)<span class="question-mark">?</span>))
+            }
+            <span class="string">&quot;dns6&quot; </span>=&gt; {
+                <span class="kw">let </span>addr = iter.next().ok_or(ParseError::UnexpectedEof)<span class="question-mark">?</span>;
+                <span class="prelude-val">Ok</span>(ProtocolRef::Dns6(DomainNameRef::try_from(addr)<span class="question-mark">?</span>))
+            }
+            <span class="string">&quot;dnsaddr&quot; </span>=&gt; {
+                <span class="kw">let </span>addr = iter.next().ok_or(ParseError::UnexpectedEof)<span class="question-mark">?</span>;
+                <span class="prelude-val">Ok</span>(ProtocolRef::DnsAddr(DomainNameRef::try_from(addr)<span class="question-mark">?</span>))
+            }
+            <span class="string">&quot;ip4&quot; </span>=&gt; {
+                <span class="kw">let </span>string_ip = iter.next().ok_or(ParseError::UnexpectedEof)<span class="question-mark">?</span>;
+                <span class="kw">let </span>parsed =
+                    no_std_net::Ipv4Addr::from_str(string_ip).map_err(|<span class="kw">_</span>| ParseError::InvalidIp)<span class="question-mark">?</span>;
+                <span class="prelude-val">Ok</span>(ProtocolRef::Ip4(parsed.octets()))
+            }
+            <span class="string">&quot;ip6&quot; </span>=&gt; {
+                <span class="kw">let </span>string_ip = iter.next().ok_or(ParseError::UnexpectedEof)<span class="question-mark">?</span>;
+                <span class="kw">let </span>parsed =
+                    no_std_net::Ipv6Addr::from_str(string_ip).map_err(|<span class="kw">_</span>| ParseError::InvalidIp)<span class="question-mark">?</span>;
+                <span class="prelude-val">Ok</span>(ProtocolRef::Ip6(parsed.octets()))
+            }
+            <span class="string">&quot;p2p&quot; </span>=&gt; {
+                <span class="kw">let </span>s = iter.next().ok_or(ParseError::UnexpectedEof)<span class="question-mark">?</span>;
+                <span class="kw">let </span>decoded = bs58::decode(s)
+                    .into_vec()
+                    .map_err(|<span class="kw">_</span>| ParseError::NotBase58)<span class="question-mark">?</span>;
+                <span class="kw">if let </span><span class="prelude-val">Err</span>(err) = multihash::MultihashRef::from_bytes(<span class="kw-2">&amp;</span>decoded) {
+                    <span class="kw">return </span><span class="prelude-val">Err</span>(ParseError::InvalidMultihash(err));
+                }
+                <span class="prelude-val">Ok</span>(ProtocolRef::P2p(Cow::Owned(decoded)))
+            }
+            <span class="string">&quot;tcp&quot; </span>=&gt; {
+                <span class="kw">let </span>port = iter.next().ok_or(ParseError::UnexpectedEof)<span class="question-mark">?</span>;
+                <span class="prelude-val">Ok</span>(ProtocolRef::Tcp(
+                    port.parse().map_err(|<span class="kw">_</span>| ParseError::InvalidPort)<span class="question-mark">?</span>,
+                ))
+            }
+            <span class="string">&quot;tls&quot; </span>=&gt; <span class="prelude-val">Ok</span>(ProtocolRef::Tls),
+            <span class="string">&quot;udp&quot; </span>=&gt; {
+                <span class="kw">let </span>port = iter.next().ok_or(ParseError::UnexpectedEof)<span class="question-mark">?</span>;
+                <span class="prelude-val">Ok</span>(ProtocolRef::Udp(
+                    port.parse().map_err(|<span class="kw">_</span>| ParseError::InvalidPort)<span class="question-mark">?</span>,
+                ))
+            }
+            <span class="string">&quot;ws&quot; </span>=&gt; <span class="prelude-val">Ok</span>(ProtocolRef::Ws),
+            <span class="string">&quot;wss&quot; </span>=&gt; <span class="prelude-val">Ok</span>(ProtocolRef::Wss),
+            <span class="string">&quot;memory&quot; </span>=&gt; {
+                <span class="kw">let </span>payload = iter.next().ok_or(ParseError::UnexpectedEof)<span class="question-mark">?</span>;
+                <span class="prelude-val">Ok</span>(ProtocolRef::Memory(
+                    payload
+                        .parse()
+                        .map_err(|<span class="kw">_</span>| ParseError::InvalidMemoryPayload)<span class="question-mark">?</span>,
+                ))
+            }
+            <span class="string">&quot;webrtc&quot; </span>=&gt; <span class="prelude-val">Ok</span>(ProtocolRef::WebRTC),
+            <span class="string">&quot;certhash&quot; </span>=&gt; {
+                <span class="kw">let </span>s = iter.next().ok_or(ParseError::UnexpectedEof)<span class="question-mark">?</span>;
+                <span class="comment">// See &lt;https://github.com/multiformats/multibase#multibase-table&gt;
+                </span><span class="kw">let </span>base64_flavor = <span class="kw">match </span>s.as_bytes().first() {
+                    <span class="prelude-val">Some</span>(<span class="string">b&#39;m&#39;</span>) =&gt; base64::STANDARD_NO_PAD,
+                    <span class="prelude-val">Some</span>(<span class="string">b&#39;M&#39;</span>) =&gt; base64::STANDARD,
+                    <span class="prelude-val">Some</span>(<span class="string">b&#39;u&#39;</span>) =&gt; base64::URL_SAFE_NO_PAD,
+                    <span class="prelude-val">Some</span>(<span class="string">b&#39;U&#39;</span>) =&gt; base64::URL_SAFE,
+                    <span class="kw">_ </span>=&gt; <span class="kw">return </span><span class="prelude-val">Err</span>(ParseError::InvalidMultibase),
+                };
+                <span class="kw">let </span>decoded = base64::decode_config(<span class="kw-2">&amp;</span>s[<span class="number">1</span>..], base64_flavor)
+                    .map_err(|<span class="kw">_</span>| ParseError::InvalidBase64)<span class="question-mark">?</span>;
+                <span class="kw">if let </span><span class="prelude-val">Err</span>(err) = multihash::MultihashRef::from_bytes(<span class="kw-2">&amp;</span>decoded) {
+                    <span class="kw">return </span><span class="prelude-val">Err</span>(ParseError::InvalidMultihash(err));
+                }
+                <span class="prelude-val">Ok</span>(ProtocolRef::Certhash(Cow::Owned(decoded)))
+            }
+            <span class="kw">_ </span>=&gt; <span class="prelude-val">Err</span>(ParseError::UnrecognizedProtocol),
+        }
+    }
+
+    <span class="doccomment">/// Returns an iterator to a list of buffers that, when concatenated together, form the
+    /// binary representation of this protocol.
+    </span><span class="kw">pub fn </span>as_bytes(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw">impl </span>Iterator&lt;Item = <span class="kw">impl </span>AsRef&lt;[u8]&gt;&gt; {
+        <span class="kw">let </span>code = <span class="kw">match </span><span class="self">self </span>{
+            ProtocolRef::Dns(<span class="kw">_</span>) =&gt; <span class="number">53</span>,
+            ProtocolRef::Dns4(<span class="kw">_</span>) =&gt; <span class="number">54</span>,
+            ProtocolRef::Dns6(<span class="kw">_</span>) =&gt; <span class="number">55</span>,
+            ProtocolRef::DnsAddr(<span class="kw">_</span>) =&gt; <span class="number">56</span>,
+            ProtocolRef::Ip4(<span class="kw">_</span>) =&gt; <span class="number">4</span>,
+            ProtocolRef::Ip6(<span class="kw">_</span>) =&gt; <span class="number">41</span>,
+            ProtocolRef::P2p(<span class="kw">_</span>) =&gt; <span class="number">421</span>,
+            ProtocolRef::Quic =&gt; <span class="number">460</span>,
+            ProtocolRef::Tcp(<span class="kw">_</span>) =&gt; <span class="number">6</span>,
+            ProtocolRef::Tls =&gt; <span class="number">448</span>,
+            ProtocolRef::Udp(<span class="kw">_</span>) =&gt; <span class="number">273</span>,
+            ProtocolRef::Ws =&gt; <span class="number">477</span>,
+            ProtocolRef::Wss =&gt; <span class="number">478</span>,
+            ProtocolRef::Memory(<span class="kw">_</span>) =&gt; <span class="number">777</span>,
+            ProtocolRef::WebRTC =&gt; <span class="number">280</span>,
+            ProtocolRef::Certhash(<span class="kw">_</span>) =&gt; <span class="number">466</span>,
+        };
+
+        <span class="comment">// TODO: optimize by not allocating a Vec
+        </span><span class="kw">let </span>extra = <span class="kw">match </span><span class="self">self </span>{
+            ProtocolRef::Dns(addr)
+            | ProtocolRef::Dns4(addr)
+            | ProtocolRef::Dns6(addr)
+            | ProtocolRef::DnsAddr(addr) =&gt; {
+                <span class="kw">let </span><span class="kw-2">mut </span>out = Vec::with_capacity(addr.as_ref().len() + <span class="number">4</span>);
+                out.extend(<span class="kw">crate</span>::util::leb128::encode_usize(addr.as_ref().len()));
+                out.extend_from_slice(addr.as_ref());
+                out
+            }
+            ProtocolRef::Ip4(ip) =&gt; ip.to_vec(),
+            ProtocolRef::Ip6(ip) =&gt; ip.to_vec(),
+            ProtocolRef::P2p(multihash) =&gt; {
+                <span class="comment">// TODO: what if not a valid multihash? the enum variant can be constructed by the user
+                </span><span class="kw">let </span><span class="kw-2">mut </span>out = Vec::with_capacity(multihash.len() + <span class="number">4</span>);
+                out.extend(<span class="kw">crate</span>::util::leb128::encode_usize(multihash.len()));
+                out.extend_from_slice(multihash);
+                out
+            }
+            ProtocolRef::Tcp(port) | ProtocolRef::Udp(port) =&gt; port.to_be_bytes().to_vec(),
+            ProtocolRef::Memory(payload) =&gt; payload.to_be_bytes().to_vec(),
+            ProtocolRef::Certhash(multihash) =&gt; {
+                <span class="comment">// TODO: what if not a valid multihash? the enum variant can be constructed by the user
+                </span><span class="kw">let </span><span class="kw-2">mut </span>out = Vec::with_capacity(multihash.len() + <span class="number">4</span>);
+                out.extend(<span class="kw">crate</span>::util::leb128::encode_usize(multihash.len()));
+                out.extend_from_slice(multihash);
+                out
+            }
+            <span class="kw">_ </span>=&gt; Vec::new(),
+        };
+
+        <span class="comment">// Combine `code` and `extra`.
+        </span><span class="kw">crate</span>::util::leb128::encode_usize(code)
+            .map(|b| either::Left([b]))
+            .chain(iter::once(either::Right(extra)))
+    }
+}
+
+<span class="kw">impl</span>&lt;<span class="lifetime">&#39;a</span>&gt; fmt::Display <span class="kw">for </span>ProtocolRef&lt;<span class="lifetime">&#39;a</span>&gt; {
+    <span class="kw">fn </span>fmt(<span class="kw-2">&amp;</span><span class="self">self</span>, f: <span class="kw-2">&amp;mut </span>fmt::Formatter) -&gt; fmt::Result {
+        <span class="kw">match </span><span class="self">self </span>{
+            <span class="comment">// Note that since a `DomainNameRef` always contains a valid domain name, it is
+            // guaranteed that `addr` never contains a `/`.
+            </span>ProtocolRef::Dns(addr) =&gt; <span class="macro">write!</span>(f, <span class="string">&quot;/dns/{}&quot;</span>, addr),
+            ProtocolRef::Dns4(addr) =&gt; <span class="macro">write!</span>(f, <span class="string">&quot;/dns4/{}&quot;</span>, addr),
+            ProtocolRef::Dns6(addr) =&gt; <span class="macro">write!</span>(f, <span class="string">&quot;/dns6/{}&quot;</span>, addr),
+            ProtocolRef::DnsAddr(addr) =&gt; <span class="macro">write!</span>(f, <span class="string">&quot;/dnsaddr/{}&quot;</span>, addr),
+            ProtocolRef::Ip4(ip) =&gt; <span class="macro">write!</span>(f, <span class="string">&quot;/ip4/{}&quot;</span>, no_std_net::Ipv4Addr::from(<span class="kw-2">*</span>ip)),
+            ProtocolRef::Ip6(ip) =&gt; <span class="macro">write!</span>(f, <span class="string">&quot;/ip6/{}&quot;</span>, no_std_net::Ipv6Addr::from(<span class="kw-2">*</span>ip)),
+            ProtocolRef::P2p(multihash) =&gt; {
+                <span class="comment">// Base58 encoding doesn&#39;t have `/` in its characters set.
+                </span><span class="macro">write!</span>(f, <span class="string">&quot;/p2p/{}&quot;</span>, bs58::encode(multihash).into_string())
+            }
+            ProtocolRef::Quic =&gt; <span class="macro">write!</span>(f, <span class="string">&quot;/quic&quot;</span>),
+            ProtocolRef::Tcp(port) =&gt; <span class="macro">write!</span>(f, <span class="string">&quot;/tcp/{}&quot;</span>, port),
+            ProtocolRef::Tls =&gt; <span class="macro">write!</span>(f, <span class="string">&quot;/tls&quot;</span>),
+            ProtocolRef::Udp(port) =&gt; <span class="macro">write!</span>(f, <span class="string">&quot;/udp/{}&quot;</span>, port),
+            ProtocolRef::Ws =&gt; <span class="macro">write!</span>(f, <span class="string">&quot;/ws&quot;</span>),
+            ProtocolRef::Wss =&gt; <span class="macro">write!</span>(f, <span class="string">&quot;/wss&quot;</span>),
+            ProtocolRef::Memory(payload) =&gt; <span class="macro">write!</span>(f, <span class="string">&quot;/memory/{}&quot;</span>, payload),
+            ProtocolRef::WebRTC =&gt; <span class="macro">write!</span>(f, <span class="string">&quot;/webrtc&quot;</span>),
+            ProtocolRef::Certhash(multihash) =&gt; {
+                <span class="macro">write!</span>(
+                    f,
+                    <span class="string">&quot;/certhash/u{}&quot;</span>,
+                    base64::encode_config(multihash, base64::URL_SAFE_NO_PAD)
+                )
+            }
+        }
+    }
+}
+
+<span class="doccomment">/// Domain name. Guarantees that the domain name has a valid syntax.
+</span><span class="attribute">#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+</span><span class="kw">pub struct </span>DomainNameRef&lt;<span class="lifetime">&#39;a</span>&gt;(<span class="kw-2">&amp;</span><span class="lifetime">&#39;a </span>str);
+
+<span class="kw">impl</span>&lt;<span class="lifetime">&#39;a</span>&gt; TryFrom&lt;<span class="kw-2">&amp;</span><span class="lifetime">&#39;a </span>str&gt; <span class="kw">for </span>DomainNameRef&lt;<span class="lifetime">&#39;a</span>&gt; {
+    <span class="kw">type </span>Error = ParseError;
+
+    <span class="kw">fn </span>try_from(input: <span class="kw-2">&amp;</span><span class="lifetime">&#39;a </span>str) -&gt; <span class="prelude-ty">Result</span>&lt;<span class="self">Self</span>, <span class="self">Self</span>::Error&gt; {
+        <span class="comment">// Checks whether the input is valid domain name.
+        // See https://datatracker.ietf.org/doc/html/rfc2181#section-11
+
+        // An earlier version of this code used the `addr` Rust library, but it resulted in an
+        // unnecessarily large binary size overhead (~1.1 MiB!), so the check is now implemented
+        // manually instead.
+
+        </span><span class="kw">if </span>input.as_bytes().len() &gt; <span class="number">255 </span>{
+            <span class="kw">return </span><span class="prelude-val">Err</span>(ParseError::InvalidDomainName);
+        }
+
+        <span class="kw">if </span>!input.is_empty() &amp;&amp; input != <span class="string">&quot;.&quot; </span>{
+            <span class="comment">// The checks within this for loop would fail if `input` is empty or equal to &quot;.&quot;,
+            // even though &quot;&quot; and &quot;.&quot; are valid domain names.
+            </span><span class="kw">for </span>label <span class="kw">in </span>input.split_terminator(<span class="string">&#39;.&#39;</span>) {
+                <span class="kw">if </span>label.is_empty() || label.as_bytes().len() &gt; <span class="number">63 </span>{
+                    <span class="kw">return </span><span class="prelude-val">Err</span>(ParseError::InvalidDomainName);
+                }
+            }
+        }
+
+        <span class="comment">// In addition to the standard, we also forbid any domain name containing a `/` byte,
+        // because it would mess up with the multiaddress format.
+        </span><span class="kw">if </span>input.chars().any(|c| c == <span class="string">&#39;/&#39;</span>) || input.as_bytes().iter().any(|b| <span class="kw-2">*</span>b == <span class="string">b&#39;/&#39;</span>) {
+            <span class="kw">return </span><span class="prelude-val">Err</span>(ParseError::InvalidDomainName);
+        }
+
+        <span class="comment">// Note that success here does in no way guarantee that this domain name is registrable,
+        // only that its syntax is valid.
+
+        </span><span class="prelude-val">Ok</span>(DomainNameRef(input))
+    }
+}
+
+<span class="kw">impl</span>&lt;<span class="lifetime">&#39;a</span>&gt; AsRef&lt;[u8]&gt; <span class="kw">for </span>DomainNameRef&lt;<span class="lifetime">&#39;a</span>&gt; {
+    <span class="kw">fn </span>as_ref(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span>[u8] {
+        <span class="self">self</span>.<span class="number">0</span>.as_bytes()
+    }
+}
+
+<span class="kw">impl</span>&lt;<span class="lifetime">&#39;a</span>&gt; fmt::Debug <span class="kw">for </span>DomainNameRef&lt;<span class="lifetime">&#39;a</span>&gt; {
+    <span class="kw">fn </span>fmt(<span class="kw-2">&amp;</span><span class="self">self</span>, f: <span class="kw-2">&amp;mut </span>fmt::Formatter) -&gt; fmt::Result {
+        fmt::Debug::fmt(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="number">0</span>, f)
+    }
+}
+
+<span class="kw">impl</span>&lt;<span class="lifetime">&#39;a</span>&gt; fmt::Display <span class="kw">for </span>DomainNameRef&lt;<span class="lifetime">&#39;a</span>&gt; {
+    <span class="kw">fn </span>fmt(<span class="kw-2">&amp;</span><span class="self">self</span>, f: <span class="kw-2">&amp;mut </span>fmt::Formatter) -&gt; fmt::Result {
+        fmt::Display::fmt(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="number">0</span>, f)
+    }
+}
+
+<span class="doccomment">/// Parses a single protocol from its bytes.
+</span><span class="kw">fn </span>protocol&lt;<span class="lifetime">&#39;a</span>, E: nom::error::ParseError&lt;<span class="kw-2">&amp;</span><span class="lifetime">&#39;a </span>[u8]&gt;&gt;(
+    bytes: <span class="kw-2">&amp;</span><span class="lifetime">&#39;a </span>[u8],
+) -&gt; nom::IResult&lt;<span class="kw-2">&amp;</span><span class="lifetime">&#39;a </span>[u8], ProtocolRef&lt;<span class="lifetime">&#39;a</span>&gt;, E&gt; {
+    nom::combinator::flat_map(<span class="kw">crate</span>::util::leb128::nom_leb128_usize, |protocol_code| {
+        <span class="kw">move </span>|bytes: <span class="kw-2">&amp;</span><span class="lifetime">&#39;a </span>[u8]| <span class="kw">match </span>protocol_code {
+            <span class="number">4 </span>=&gt; nom::combinator::map(nom::bytes::complete::take(<span class="number">4_u32</span>), |ip: <span class="kw-2">&amp;</span><span class="lifetime">&#39;a </span>[u8]| {
+                ProtocolRef::Ip4(ip.try_into().unwrap())
+            })(bytes),
+            <span class="number">6 </span>=&gt; nom::combinator::map(nom::number::complete::be_u16, ProtocolRef::Tcp)(bytes),
+            <span class="number">41 </span>=&gt; nom::combinator::map(nom::bytes::complete::take(<span class="number">16_u32</span>), |ip: <span class="kw-2">&amp;</span><span class="lifetime">&#39;a </span>[u8]| {
+                ProtocolRef::Ip6(ip.try_into().unwrap())
+            })(bytes),
+            <span class="number">53 </span>=&gt; nom::combinator::map(
+                nom::combinator::map_opt(
+                    nom::multi::length_data(<span class="kw">crate</span>::util::leb128::nom_leb128_usize),
+                    |s| {
+                        str::from_utf8(s)
+                            .ok()
+                            .and_then(|s| DomainNameRef::try_from(s).ok())
+                    },
+                ),
+                ProtocolRef::Dns,
+            )(bytes),
+            <span class="number">54 </span>=&gt; nom::combinator::map(
+                nom::combinator::map_opt(
+                    nom::multi::length_data(<span class="kw">crate</span>::util::leb128::nom_leb128_usize),
+                    |s| {
+                        str::from_utf8(s)
+                            .ok()
+                            .and_then(|s| DomainNameRef::try_from(s).ok())
+                    },
+                ),
+                ProtocolRef::Dns4,
+            )(bytes),
+            <span class="number">55 </span>=&gt; nom::combinator::map(
+                nom::combinator::map_opt(
+                    nom::multi::length_data(<span class="kw">crate</span>::util::leb128::nom_leb128_usize),
+                    |s| {
+                        str::from_utf8(s)
+                            .ok()
+                            .and_then(|s| DomainNameRef::try_from(s).ok())
+                    },
+                ),
+                ProtocolRef::Dns6,
+            )(bytes),
+            <span class="number">56 </span>=&gt; nom::combinator::map(
+                nom::combinator::map_opt(
+                    nom::multi::length_data(<span class="kw">crate</span>::util::leb128::nom_leb128_usize),
+                    |s| {
+                        str::from_utf8(s)
+                            .ok()
+                            .and_then(|s| DomainNameRef::try_from(s).ok())
+                    },
+                ),
+                ProtocolRef::DnsAddr,
+            )(bytes),
+            <span class="number">273 </span>=&gt; nom::combinator::map(nom::number::complete::be_u16, ProtocolRef::Udp)(bytes),
+            <span class="number">421 </span>=&gt; nom::combinator::map(
+                nom::combinator::verify(
+                    nom::multi::length_data(<span class="kw">crate</span>::util::leb128::nom_leb128_usize),
+                    |s| multihash::MultihashRef::from_bytes(s).is_ok(),
+                ),
+                |b| ProtocolRef::P2p(Cow::Borrowed(b)),
+            )(bytes),
+            <span class="number">448 </span>=&gt; <span class="prelude-val">Ok</span>((bytes, ProtocolRef::Tls)),
+            <span class="number">460 </span>=&gt; <span class="prelude-val">Ok</span>((bytes, ProtocolRef::Quic)),
+            <span class="number">477 </span>=&gt; <span class="prelude-val">Ok</span>((bytes, ProtocolRef::Ws)),
+            <span class="number">478 </span>=&gt; <span class="prelude-val">Ok</span>((bytes, ProtocolRef::Wss)),
+            <span class="comment">// TODO: unclear what the /memory payload is, see https://github.com/multiformats/multiaddr/issues/127
+            </span><span class="number">777 </span>=&gt; nom::combinator::map(nom::number::complete::be_u64, ProtocolRef::Memory)(bytes),
+            <span class="number">280 </span>=&gt; <span class="prelude-val">Ok</span>((bytes, ProtocolRef::WebRTC)),
+            <span class="number">466 </span>=&gt; nom::combinator::map(
+                nom::combinator::verify(
+                    nom::multi::length_data(<span class="kw">crate</span>::util::leb128::nom_leb128_usize),
+                    |s| multihash::MultihashRef::from_bytes(s).is_ok(),
+                ),
+                |b| ProtocolRef::Certhash(Cow::Borrowed(b)),
+            )(bytes),
+            <span class="kw">_ </span>=&gt; <span class="prelude-val">Err</span>(nom::Err::Error(nom::error::make_error(
+                bytes,
+                nom::error::ErrorKind::Tag,
+            ))),
+        }
+    })(bytes)
+}
+
+<span class="attribute">#[cfg(test)]
+</span><span class="kw">mod </span>tests {
+    <span class="kw">use </span><span class="kw">super</span>::Multiaddr;
+
+    <span class="attribute">#[test]
+    </span><span class="kw">fn </span>basic() {
+        <span class="kw">fn </span>check_valid(addr: <span class="kw-2">&amp;</span>str) {
+            <span class="kw">let </span>parsed = addr.parse::&lt;Multiaddr&gt;().unwrap();
+            <span class="macro">assert_eq!</span>(parsed.to_string(), addr, <span class="string">&quot;{}&quot;</span>, addr);
+            <span class="macro">assert_eq!</span>(
+                Multiaddr::try_from(parsed.to_vec()).unwrap(),
+                parsed,
+                <span class="string">&quot;{}&quot;</span>,
+                addr
+            );
+        }
+
+        <span class="kw">fn </span>check_invalid(addr: <span class="kw-2">&amp;</span>str) {
+            <span class="macro">assert!</span>(addr.parse::&lt;Multiaddr&gt;().is_err(), <span class="string">&quot;{}&quot;</span>, addr);
+        }
+
+        check_valid(<span class="string">&quot;&quot;</span>);
+        check_valid(<span class="string">&quot;/ip4/1.2.3.4/tcp/30333&quot;</span>);
+        check_valid(
+            <span class="string">&quot;/ip4/127.0.0.1/tcp/30333/p2p/12D3KooWDpJ7As7BWAwRMfu1VU2WCqNjvq387JEYKDBj4kx6nXTN&quot;</span>,
+        );
+        check_valid(<span class="string">&quot;/ip6/::/udp/30333&quot;</span>);
+        check_valid(<span class="string">&quot;/ip6/::1/udp/30333/tls&quot;</span>);
+        check_valid(<span class="string">&quot;/ip6/::1/udp/30333/tls/ws&quot;</span>);
+        check_valid(<span class="string">&quot;/tcp/65535/udp/65535/ws/tls/wss&quot;</span>);
+        check_valid(<span class="string">&quot;/dns/0.0.0.0&quot;</span>);
+        check_valid(<span class="string">&quot;/dns4/example.com./tcp/55&quot;</span>);
+        check_valid(<span class="string">&quot;/dns6//tcp/55&quot;</span>);
+        check_valid(<span class="string">&quot;/dnsaddr/./tcp/55&quot;</span>);
+        check_valid(<span class="string">&quot;/memory/1234567890&quot;</span>);
+        check_valid(<span class="string">&quot;/webrtc&quot;</span>);
+        <span class="comment">// TODO: example valid /certhash
+
+        </span>check_invalid(<span class="string">&quot;/&quot;</span>);
+        check_invalid(<span class="string">&quot;ip4/1.2.3.4&quot;</span>);
+        check_invalid(<span class="string">&quot;/nonexistingprotocol&quot;</span>);
+        check_invalid(<span class="string">&quot;/ip4/1.1.1&quot;</span>);
+        check_invalid(<span class="string">&quot;/ip6/:::&quot;</span>);
+        check_invalid(<span class="string">&quot;/ws/1.2.3.4&quot;</span>);
+        check_invalid(<span class="string">&quot;/tcp/65536&quot;</span>);
+        check_invalid(<span class="string">&quot;/p2p/blablabla&quot;</span>);
+        check_invalid(<span class="string">&quot;/webrtc/2&quot;</span>);
+        check_invalid(<span class="string">&quot;/certhash&quot;</span>);
+        check_invalid(<span class="string">&quot;/certhash/12D3KooWDpJ7As7BWAwRMfu1VU2WCqNjvq387JEYKDBj4kx6nXTN&quot;</span>);
+    }
+}
+</code></pre></div>
+</section></div></main><div id="rustdoc-vars" data-root-path="../../../" data-current-crate="smoldot" data-themes="ayu,dark,light" data-resource-suffix="" data-rustdoc-version="1.65.0 (897e37553 2022-11-02)" ></div></body></html>

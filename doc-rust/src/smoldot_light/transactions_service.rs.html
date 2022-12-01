@@ -1,0 +1,2486 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `bin/light-base/src/transactions_service.rs`."><meta name="keywords" content="rust, rustlang, rust-lang"><title>transactions_service.rs - source</title><link rel="preload" as="font" type="font/woff2" crossorigin href="../../SourceSerif4-Regular.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../FiraSans-Regular.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../FiraSans-Medium.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../SourceCodePro-Regular.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../SourceSerif4-Bold.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../SourceCodePro-Semibold.ttf.woff2"><link rel="stylesheet" href="../../normalize.css"><link rel="stylesheet" href="../../rustdoc.css" id="mainThemeStyle"><link rel="stylesheet" href="../../ayu.css" disabled><link rel="stylesheet" href="../../dark.css" disabled><link rel="stylesheet" href="../../light.css" id="themeStyle"><script id="default-settings" ></script><script src="../../storage.js"></script><script defer src="../../source-script.js"></script><script defer src="../../source-files.js"></script><script defer src="../../main.js"></script><noscript><link rel="stylesheet" href="../../noscript.css"></noscript><link rel="alternate icon" type="image/png" href="../../favicon-16x16.png"><link rel="alternate icon" type="image/png" href="../../favicon-32x32.png"><link rel="icon" type="image/svg+xml" href="../../favicon.svg"></head><body class="rustdoc source"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="mobile-topbar"><button class="sidebar-menu-toggle">&#9776;</button><a class="sidebar-logo" href="../../smoldot_light/index.html"><div class="logo-container"><img class="rust-logo" src="../../rust-logo.svg" alt="logo"></div></a><h2 class="location"></h2></nav><nav class="sidebar"><a class="sidebar-logo" href="../../smoldot_light/index.html"><div class="logo-container"><img class="rust-logo" src="../../rust-logo.svg" alt="logo"></div></a></nav><main><div class="width-limiter"><div class="sub-container"><a class="sub-logo-container" href="../../smoldot_light/index.html"><img class="rust-logo" src="../../rust-logo.svg" alt="logo"></a><nav class="sub"><form class="search-form"><div class="search-container"><span></span><input class="search-input" name="search" autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"><div id="help-button" title="help" tabindex="-1"><button type="button">?</button></div><div id="settings-menu" tabindex="-1"><a href="../../settings.html" title="settings"><img width="22" height="22" alt="Change settings" src="../../wheel.svg"></a></div></div></form></nav></div><section id="main-content" class="content"><div class="example-wrap"><pre class="line-numbers"><span id="1">1</span>
+<span id="2">2</span>
+<span id="3">3</span>
+<span id="4">4</span>
+<span id="5">5</span>
+<span id="6">6</span>
+<span id="7">7</span>
+<span id="8">8</span>
+<span id="9">9</span>
+<span id="10">10</span>
+<span id="11">11</span>
+<span id="12">12</span>
+<span id="13">13</span>
+<span id="14">14</span>
+<span id="15">15</span>
+<span id="16">16</span>
+<span id="17">17</span>
+<span id="18">18</span>
+<span id="19">19</span>
+<span id="20">20</span>
+<span id="21">21</span>
+<span id="22">22</span>
+<span id="23">23</span>
+<span id="24">24</span>
+<span id="25">25</span>
+<span id="26">26</span>
+<span id="27">27</span>
+<span id="28">28</span>
+<span id="29">29</span>
+<span id="30">30</span>
+<span id="31">31</span>
+<span id="32">32</span>
+<span id="33">33</span>
+<span id="34">34</span>
+<span id="35">35</span>
+<span id="36">36</span>
+<span id="37">37</span>
+<span id="38">38</span>
+<span id="39">39</span>
+<span id="40">40</span>
+<span id="41">41</span>
+<span id="42">42</span>
+<span id="43">43</span>
+<span id="44">44</span>
+<span id="45">45</span>
+<span id="46">46</span>
+<span id="47">47</span>
+<span id="48">48</span>
+<span id="49">49</span>
+<span id="50">50</span>
+<span id="51">51</span>
+<span id="52">52</span>
+<span id="53">53</span>
+<span id="54">54</span>
+<span id="55">55</span>
+<span id="56">56</span>
+<span id="57">57</span>
+<span id="58">58</span>
+<span id="59">59</span>
+<span id="60">60</span>
+<span id="61">61</span>
+<span id="62">62</span>
+<span id="63">63</span>
+<span id="64">64</span>
+<span id="65">65</span>
+<span id="66">66</span>
+<span id="67">67</span>
+<span id="68">68</span>
+<span id="69">69</span>
+<span id="70">70</span>
+<span id="71">71</span>
+<span id="72">72</span>
+<span id="73">73</span>
+<span id="74">74</span>
+<span id="75">75</span>
+<span id="76">76</span>
+<span id="77">77</span>
+<span id="78">78</span>
+<span id="79">79</span>
+<span id="80">80</span>
+<span id="81">81</span>
+<span id="82">82</span>
+<span id="83">83</span>
+<span id="84">84</span>
+<span id="85">85</span>
+<span id="86">86</span>
+<span id="87">87</span>
+<span id="88">88</span>
+<span id="89">89</span>
+<span id="90">90</span>
+<span id="91">91</span>
+<span id="92">92</span>
+<span id="93">93</span>
+<span id="94">94</span>
+<span id="95">95</span>
+<span id="96">96</span>
+<span id="97">97</span>
+<span id="98">98</span>
+<span id="99">99</span>
+<span id="100">100</span>
+<span id="101">101</span>
+<span id="102">102</span>
+<span id="103">103</span>
+<span id="104">104</span>
+<span id="105">105</span>
+<span id="106">106</span>
+<span id="107">107</span>
+<span id="108">108</span>
+<span id="109">109</span>
+<span id="110">110</span>
+<span id="111">111</span>
+<span id="112">112</span>
+<span id="113">113</span>
+<span id="114">114</span>
+<span id="115">115</span>
+<span id="116">116</span>
+<span id="117">117</span>
+<span id="118">118</span>
+<span id="119">119</span>
+<span id="120">120</span>
+<span id="121">121</span>
+<span id="122">122</span>
+<span id="123">123</span>
+<span id="124">124</span>
+<span id="125">125</span>
+<span id="126">126</span>
+<span id="127">127</span>
+<span id="128">128</span>
+<span id="129">129</span>
+<span id="130">130</span>
+<span id="131">131</span>
+<span id="132">132</span>
+<span id="133">133</span>
+<span id="134">134</span>
+<span id="135">135</span>
+<span id="136">136</span>
+<span id="137">137</span>
+<span id="138">138</span>
+<span id="139">139</span>
+<span id="140">140</span>
+<span id="141">141</span>
+<span id="142">142</span>
+<span id="143">143</span>
+<span id="144">144</span>
+<span id="145">145</span>
+<span id="146">146</span>
+<span id="147">147</span>
+<span id="148">148</span>
+<span id="149">149</span>
+<span id="150">150</span>
+<span id="151">151</span>
+<span id="152">152</span>
+<span id="153">153</span>
+<span id="154">154</span>
+<span id="155">155</span>
+<span id="156">156</span>
+<span id="157">157</span>
+<span id="158">158</span>
+<span id="159">159</span>
+<span id="160">160</span>
+<span id="161">161</span>
+<span id="162">162</span>
+<span id="163">163</span>
+<span id="164">164</span>
+<span id="165">165</span>
+<span id="166">166</span>
+<span id="167">167</span>
+<span id="168">168</span>
+<span id="169">169</span>
+<span id="170">170</span>
+<span id="171">171</span>
+<span id="172">172</span>
+<span id="173">173</span>
+<span id="174">174</span>
+<span id="175">175</span>
+<span id="176">176</span>
+<span id="177">177</span>
+<span id="178">178</span>
+<span id="179">179</span>
+<span id="180">180</span>
+<span id="181">181</span>
+<span id="182">182</span>
+<span id="183">183</span>
+<span id="184">184</span>
+<span id="185">185</span>
+<span id="186">186</span>
+<span id="187">187</span>
+<span id="188">188</span>
+<span id="189">189</span>
+<span id="190">190</span>
+<span id="191">191</span>
+<span id="192">192</span>
+<span id="193">193</span>
+<span id="194">194</span>
+<span id="195">195</span>
+<span id="196">196</span>
+<span id="197">197</span>
+<span id="198">198</span>
+<span id="199">199</span>
+<span id="200">200</span>
+<span id="201">201</span>
+<span id="202">202</span>
+<span id="203">203</span>
+<span id="204">204</span>
+<span id="205">205</span>
+<span id="206">206</span>
+<span id="207">207</span>
+<span id="208">208</span>
+<span id="209">209</span>
+<span id="210">210</span>
+<span id="211">211</span>
+<span id="212">212</span>
+<span id="213">213</span>
+<span id="214">214</span>
+<span id="215">215</span>
+<span id="216">216</span>
+<span id="217">217</span>
+<span id="218">218</span>
+<span id="219">219</span>
+<span id="220">220</span>
+<span id="221">221</span>
+<span id="222">222</span>
+<span id="223">223</span>
+<span id="224">224</span>
+<span id="225">225</span>
+<span id="226">226</span>
+<span id="227">227</span>
+<span id="228">228</span>
+<span id="229">229</span>
+<span id="230">230</span>
+<span id="231">231</span>
+<span id="232">232</span>
+<span id="233">233</span>
+<span id="234">234</span>
+<span id="235">235</span>
+<span id="236">236</span>
+<span id="237">237</span>
+<span id="238">238</span>
+<span id="239">239</span>
+<span id="240">240</span>
+<span id="241">241</span>
+<span id="242">242</span>
+<span id="243">243</span>
+<span id="244">244</span>
+<span id="245">245</span>
+<span id="246">246</span>
+<span id="247">247</span>
+<span id="248">248</span>
+<span id="249">249</span>
+<span id="250">250</span>
+<span id="251">251</span>
+<span id="252">252</span>
+<span id="253">253</span>
+<span id="254">254</span>
+<span id="255">255</span>
+<span id="256">256</span>
+<span id="257">257</span>
+<span id="258">258</span>
+<span id="259">259</span>
+<span id="260">260</span>
+<span id="261">261</span>
+<span id="262">262</span>
+<span id="263">263</span>
+<span id="264">264</span>
+<span id="265">265</span>
+<span id="266">266</span>
+<span id="267">267</span>
+<span id="268">268</span>
+<span id="269">269</span>
+<span id="270">270</span>
+<span id="271">271</span>
+<span id="272">272</span>
+<span id="273">273</span>
+<span id="274">274</span>
+<span id="275">275</span>
+<span id="276">276</span>
+<span id="277">277</span>
+<span id="278">278</span>
+<span id="279">279</span>
+<span id="280">280</span>
+<span id="281">281</span>
+<span id="282">282</span>
+<span id="283">283</span>
+<span id="284">284</span>
+<span id="285">285</span>
+<span id="286">286</span>
+<span id="287">287</span>
+<span id="288">288</span>
+<span id="289">289</span>
+<span id="290">290</span>
+<span id="291">291</span>
+<span id="292">292</span>
+<span id="293">293</span>
+<span id="294">294</span>
+<span id="295">295</span>
+<span id="296">296</span>
+<span id="297">297</span>
+<span id="298">298</span>
+<span id="299">299</span>
+<span id="300">300</span>
+<span id="301">301</span>
+<span id="302">302</span>
+<span id="303">303</span>
+<span id="304">304</span>
+<span id="305">305</span>
+<span id="306">306</span>
+<span id="307">307</span>
+<span id="308">308</span>
+<span id="309">309</span>
+<span id="310">310</span>
+<span id="311">311</span>
+<span id="312">312</span>
+<span id="313">313</span>
+<span id="314">314</span>
+<span id="315">315</span>
+<span id="316">316</span>
+<span id="317">317</span>
+<span id="318">318</span>
+<span id="319">319</span>
+<span id="320">320</span>
+<span id="321">321</span>
+<span id="322">322</span>
+<span id="323">323</span>
+<span id="324">324</span>
+<span id="325">325</span>
+<span id="326">326</span>
+<span id="327">327</span>
+<span id="328">328</span>
+<span id="329">329</span>
+<span id="330">330</span>
+<span id="331">331</span>
+<span id="332">332</span>
+<span id="333">333</span>
+<span id="334">334</span>
+<span id="335">335</span>
+<span id="336">336</span>
+<span id="337">337</span>
+<span id="338">338</span>
+<span id="339">339</span>
+<span id="340">340</span>
+<span id="341">341</span>
+<span id="342">342</span>
+<span id="343">343</span>
+<span id="344">344</span>
+<span id="345">345</span>
+<span id="346">346</span>
+<span id="347">347</span>
+<span id="348">348</span>
+<span id="349">349</span>
+<span id="350">350</span>
+<span id="351">351</span>
+<span id="352">352</span>
+<span id="353">353</span>
+<span id="354">354</span>
+<span id="355">355</span>
+<span id="356">356</span>
+<span id="357">357</span>
+<span id="358">358</span>
+<span id="359">359</span>
+<span id="360">360</span>
+<span id="361">361</span>
+<span id="362">362</span>
+<span id="363">363</span>
+<span id="364">364</span>
+<span id="365">365</span>
+<span id="366">366</span>
+<span id="367">367</span>
+<span id="368">368</span>
+<span id="369">369</span>
+<span id="370">370</span>
+<span id="371">371</span>
+<span id="372">372</span>
+<span id="373">373</span>
+<span id="374">374</span>
+<span id="375">375</span>
+<span id="376">376</span>
+<span id="377">377</span>
+<span id="378">378</span>
+<span id="379">379</span>
+<span id="380">380</span>
+<span id="381">381</span>
+<span id="382">382</span>
+<span id="383">383</span>
+<span id="384">384</span>
+<span id="385">385</span>
+<span id="386">386</span>
+<span id="387">387</span>
+<span id="388">388</span>
+<span id="389">389</span>
+<span id="390">390</span>
+<span id="391">391</span>
+<span id="392">392</span>
+<span id="393">393</span>
+<span id="394">394</span>
+<span id="395">395</span>
+<span id="396">396</span>
+<span id="397">397</span>
+<span id="398">398</span>
+<span id="399">399</span>
+<span id="400">400</span>
+<span id="401">401</span>
+<span id="402">402</span>
+<span id="403">403</span>
+<span id="404">404</span>
+<span id="405">405</span>
+<span id="406">406</span>
+<span id="407">407</span>
+<span id="408">408</span>
+<span id="409">409</span>
+<span id="410">410</span>
+<span id="411">411</span>
+<span id="412">412</span>
+<span id="413">413</span>
+<span id="414">414</span>
+<span id="415">415</span>
+<span id="416">416</span>
+<span id="417">417</span>
+<span id="418">418</span>
+<span id="419">419</span>
+<span id="420">420</span>
+<span id="421">421</span>
+<span id="422">422</span>
+<span id="423">423</span>
+<span id="424">424</span>
+<span id="425">425</span>
+<span id="426">426</span>
+<span id="427">427</span>
+<span id="428">428</span>
+<span id="429">429</span>
+<span id="430">430</span>
+<span id="431">431</span>
+<span id="432">432</span>
+<span id="433">433</span>
+<span id="434">434</span>
+<span id="435">435</span>
+<span id="436">436</span>
+<span id="437">437</span>
+<span id="438">438</span>
+<span id="439">439</span>
+<span id="440">440</span>
+<span id="441">441</span>
+<span id="442">442</span>
+<span id="443">443</span>
+<span id="444">444</span>
+<span id="445">445</span>
+<span id="446">446</span>
+<span id="447">447</span>
+<span id="448">448</span>
+<span id="449">449</span>
+<span id="450">450</span>
+<span id="451">451</span>
+<span id="452">452</span>
+<span id="453">453</span>
+<span id="454">454</span>
+<span id="455">455</span>
+<span id="456">456</span>
+<span id="457">457</span>
+<span id="458">458</span>
+<span id="459">459</span>
+<span id="460">460</span>
+<span id="461">461</span>
+<span id="462">462</span>
+<span id="463">463</span>
+<span id="464">464</span>
+<span id="465">465</span>
+<span id="466">466</span>
+<span id="467">467</span>
+<span id="468">468</span>
+<span id="469">469</span>
+<span id="470">470</span>
+<span id="471">471</span>
+<span id="472">472</span>
+<span id="473">473</span>
+<span id="474">474</span>
+<span id="475">475</span>
+<span id="476">476</span>
+<span id="477">477</span>
+<span id="478">478</span>
+<span id="479">479</span>
+<span id="480">480</span>
+<span id="481">481</span>
+<span id="482">482</span>
+<span id="483">483</span>
+<span id="484">484</span>
+<span id="485">485</span>
+<span id="486">486</span>
+<span id="487">487</span>
+<span id="488">488</span>
+<span id="489">489</span>
+<span id="490">490</span>
+<span id="491">491</span>
+<span id="492">492</span>
+<span id="493">493</span>
+<span id="494">494</span>
+<span id="495">495</span>
+<span id="496">496</span>
+<span id="497">497</span>
+<span id="498">498</span>
+<span id="499">499</span>
+<span id="500">500</span>
+<span id="501">501</span>
+<span id="502">502</span>
+<span id="503">503</span>
+<span id="504">504</span>
+<span id="505">505</span>
+<span id="506">506</span>
+<span id="507">507</span>
+<span id="508">508</span>
+<span id="509">509</span>
+<span id="510">510</span>
+<span id="511">511</span>
+<span id="512">512</span>
+<span id="513">513</span>
+<span id="514">514</span>
+<span id="515">515</span>
+<span id="516">516</span>
+<span id="517">517</span>
+<span id="518">518</span>
+<span id="519">519</span>
+<span id="520">520</span>
+<span id="521">521</span>
+<span id="522">522</span>
+<span id="523">523</span>
+<span id="524">524</span>
+<span id="525">525</span>
+<span id="526">526</span>
+<span id="527">527</span>
+<span id="528">528</span>
+<span id="529">529</span>
+<span id="530">530</span>
+<span id="531">531</span>
+<span id="532">532</span>
+<span id="533">533</span>
+<span id="534">534</span>
+<span id="535">535</span>
+<span id="536">536</span>
+<span id="537">537</span>
+<span id="538">538</span>
+<span id="539">539</span>
+<span id="540">540</span>
+<span id="541">541</span>
+<span id="542">542</span>
+<span id="543">543</span>
+<span id="544">544</span>
+<span id="545">545</span>
+<span id="546">546</span>
+<span id="547">547</span>
+<span id="548">548</span>
+<span id="549">549</span>
+<span id="550">550</span>
+<span id="551">551</span>
+<span id="552">552</span>
+<span id="553">553</span>
+<span id="554">554</span>
+<span id="555">555</span>
+<span id="556">556</span>
+<span id="557">557</span>
+<span id="558">558</span>
+<span id="559">559</span>
+<span id="560">560</span>
+<span id="561">561</span>
+<span id="562">562</span>
+<span id="563">563</span>
+<span id="564">564</span>
+<span id="565">565</span>
+<span id="566">566</span>
+<span id="567">567</span>
+<span id="568">568</span>
+<span id="569">569</span>
+<span id="570">570</span>
+<span id="571">571</span>
+<span id="572">572</span>
+<span id="573">573</span>
+<span id="574">574</span>
+<span id="575">575</span>
+<span id="576">576</span>
+<span id="577">577</span>
+<span id="578">578</span>
+<span id="579">579</span>
+<span id="580">580</span>
+<span id="581">581</span>
+<span id="582">582</span>
+<span id="583">583</span>
+<span id="584">584</span>
+<span id="585">585</span>
+<span id="586">586</span>
+<span id="587">587</span>
+<span id="588">588</span>
+<span id="589">589</span>
+<span id="590">590</span>
+<span id="591">591</span>
+<span id="592">592</span>
+<span id="593">593</span>
+<span id="594">594</span>
+<span id="595">595</span>
+<span id="596">596</span>
+<span id="597">597</span>
+<span id="598">598</span>
+<span id="599">599</span>
+<span id="600">600</span>
+<span id="601">601</span>
+<span id="602">602</span>
+<span id="603">603</span>
+<span id="604">604</span>
+<span id="605">605</span>
+<span id="606">606</span>
+<span id="607">607</span>
+<span id="608">608</span>
+<span id="609">609</span>
+<span id="610">610</span>
+<span id="611">611</span>
+<span id="612">612</span>
+<span id="613">613</span>
+<span id="614">614</span>
+<span id="615">615</span>
+<span id="616">616</span>
+<span id="617">617</span>
+<span id="618">618</span>
+<span id="619">619</span>
+<span id="620">620</span>
+<span id="621">621</span>
+<span id="622">622</span>
+<span id="623">623</span>
+<span id="624">624</span>
+<span id="625">625</span>
+<span id="626">626</span>
+<span id="627">627</span>
+<span id="628">628</span>
+<span id="629">629</span>
+<span id="630">630</span>
+<span id="631">631</span>
+<span id="632">632</span>
+<span id="633">633</span>
+<span id="634">634</span>
+<span id="635">635</span>
+<span id="636">636</span>
+<span id="637">637</span>
+<span id="638">638</span>
+<span id="639">639</span>
+<span id="640">640</span>
+<span id="641">641</span>
+<span id="642">642</span>
+<span id="643">643</span>
+<span id="644">644</span>
+<span id="645">645</span>
+<span id="646">646</span>
+<span id="647">647</span>
+<span id="648">648</span>
+<span id="649">649</span>
+<span id="650">650</span>
+<span id="651">651</span>
+<span id="652">652</span>
+<span id="653">653</span>
+<span id="654">654</span>
+<span id="655">655</span>
+<span id="656">656</span>
+<span id="657">657</span>
+<span id="658">658</span>
+<span id="659">659</span>
+<span id="660">660</span>
+<span id="661">661</span>
+<span id="662">662</span>
+<span id="663">663</span>
+<span id="664">664</span>
+<span id="665">665</span>
+<span id="666">666</span>
+<span id="667">667</span>
+<span id="668">668</span>
+<span id="669">669</span>
+<span id="670">670</span>
+<span id="671">671</span>
+<span id="672">672</span>
+<span id="673">673</span>
+<span id="674">674</span>
+<span id="675">675</span>
+<span id="676">676</span>
+<span id="677">677</span>
+<span id="678">678</span>
+<span id="679">679</span>
+<span id="680">680</span>
+<span id="681">681</span>
+<span id="682">682</span>
+<span id="683">683</span>
+<span id="684">684</span>
+<span id="685">685</span>
+<span id="686">686</span>
+<span id="687">687</span>
+<span id="688">688</span>
+<span id="689">689</span>
+<span id="690">690</span>
+<span id="691">691</span>
+<span id="692">692</span>
+<span id="693">693</span>
+<span id="694">694</span>
+<span id="695">695</span>
+<span id="696">696</span>
+<span id="697">697</span>
+<span id="698">698</span>
+<span id="699">699</span>
+<span id="700">700</span>
+<span id="701">701</span>
+<span id="702">702</span>
+<span id="703">703</span>
+<span id="704">704</span>
+<span id="705">705</span>
+<span id="706">706</span>
+<span id="707">707</span>
+<span id="708">708</span>
+<span id="709">709</span>
+<span id="710">710</span>
+<span id="711">711</span>
+<span id="712">712</span>
+<span id="713">713</span>
+<span id="714">714</span>
+<span id="715">715</span>
+<span id="716">716</span>
+<span id="717">717</span>
+<span id="718">718</span>
+<span id="719">719</span>
+<span id="720">720</span>
+<span id="721">721</span>
+<span id="722">722</span>
+<span id="723">723</span>
+<span id="724">724</span>
+<span id="725">725</span>
+<span id="726">726</span>
+<span id="727">727</span>
+<span id="728">728</span>
+<span id="729">729</span>
+<span id="730">730</span>
+<span id="731">731</span>
+<span id="732">732</span>
+<span id="733">733</span>
+<span id="734">734</span>
+<span id="735">735</span>
+<span id="736">736</span>
+<span id="737">737</span>
+<span id="738">738</span>
+<span id="739">739</span>
+<span id="740">740</span>
+<span id="741">741</span>
+<span id="742">742</span>
+<span id="743">743</span>
+<span id="744">744</span>
+<span id="745">745</span>
+<span id="746">746</span>
+<span id="747">747</span>
+<span id="748">748</span>
+<span id="749">749</span>
+<span id="750">750</span>
+<span id="751">751</span>
+<span id="752">752</span>
+<span id="753">753</span>
+<span id="754">754</span>
+<span id="755">755</span>
+<span id="756">756</span>
+<span id="757">757</span>
+<span id="758">758</span>
+<span id="759">759</span>
+<span id="760">760</span>
+<span id="761">761</span>
+<span id="762">762</span>
+<span id="763">763</span>
+<span id="764">764</span>
+<span id="765">765</span>
+<span id="766">766</span>
+<span id="767">767</span>
+<span id="768">768</span>
+<span id="769">769</span>
+<span id="770">770</span>
+<span id="771">771</span>
+<span id="772">772</span>
+<span id="773">773</span>
+<span id="774">774</span>
+<span id="775">775</span>
+<span id="776">776</span>
+<span id="777">777</span>
+<span id="778">778</span>
+<span id="779">779</span>
+<span id="780">780</span>
+<span id="781">781</span>
+<span id="782">782</span>
+<span id="783">783</span>
+<span id="784">784</span>
+<span id="785">785</span>
+<span id="786">786</span>
+<span id="787">787</span>
+<span id="788">788</span>
+<span id="789">789</span>
+<span id="790">790</span>
+<span id="791">791</span>
+<span id="792">792</span>
+<span id="793">793</span>
+<span id="794">794</span>
+<span id="795">795</span>
+<span id="796">796</span>
+<span id="797">797</span>
+<span id="798">798</span>
+<span id="799">799</span>
+<span id="800">800</span>
+<span id="801">801</span>
+<span id="802">802</span>
+<span id="803">803</span>
+<span id="804">804</span>
+<span id="805">805</span>
+<span id="806">806</span>
+<span id="807">807</span>
+<span id="808">808</span>
+<span id="809">809</span>
+<span id="810">810</span>
+<span id="811">811</span>
+<span id="812">812</span>
+<span id="813">813</span>
+<span id="814">814</span>
+<span id="815">815</span>
+<span id="816">816</span>
+<span id="817">817</span>
+<span id="818">818</span>
+<span id="819">819</span>
+<span id="820">820</span>
+<span id="821">821</span>
+<span id="822">822</span>
+<span id="823">823</span>
+<span id="824">824</span>
+<span id="825">825</span>
+<span id="826">826</span>
+<span id="827">827</span>
+<span id="828">828</span>
+<span id="829">829</span>
+<span id="830">830</span>
+<span id="831">831</span>
+<span id="832">832</span>
+<span id="833">833</span>
+<span id="834">834</span>
+<span id="835">835</span>
+<span id="836">836</span>
+<span id="837">837</span>
+<span id="838">838</span>
+<span id="839">839</span>
+<span id="840">840</span>
+<span id="841">841</span>
+<span id="842">842</span>
+<span id="843">843</span>
+<span id="844">844</span>
+<span id="845">845</span>
+<span id="846">846</span>
+<span id="847">847</span>
+<span id="848">848</span>
+<span id="849">849</span>
+<span id="850">850</span>
+<span id="851">851</span>
+<span id="852">852</span>
+<span id="853">853</span>
+<span id="854">854</span>
+<span id="855">855</span>
+<span id="856">856</span>
+<span id="857">857</span>
+<span id="858">858</span>
+<span id="859">859</span>
+<span id="860">860</span>
+<span id="861">861</span>
+<span id="862">862</span>
+<span id="863">863</span>
+<span id="864">864</span>
+<span id="865">865</span>
+<span id="866">866</span>
+<span id="867">867</span>
+<span id="868">868</span>
+<span id="869">869</span>
+<span id="870">870</span>
+<span id="871">871</span>
+<span id="872">872</span>
+<span id="873">873</span>
+<span id="874">874</span>
+<span id="875">875</span>
+<span id="876">876</span>
+<span id="877">877</span>
+<span id="878">878</span>
+<span id="879">879</span>
+<span id="880">880</span>
+<span id="881">881</span>
+<span id="882">882</span>
+<span id="883">883</span>
+<span id="884">884</span>
+<span id="885">885</span>
+<span id="886">886</span>
+<span id="887">887</span>
+<span id="888">888</span>
+<span id="889">889</span>
+<span id="890">890</span>
+<span id="891">891</span>
+<span id="892">892</span>
+<span id="893">893</span>
+<span id="894">894</span>
+<span id="895">895</span>
+<span id="896">896</span>
+<span id="897">897</span>
+<span id="898">898</span>
+<span id="899">899</span>
+<span id="900">900</span>
+<span id="901">901</span>
+<span id="902">902</span>
+<span id="903">903</span>
+<span id="904">904</span>
+<span id="905">905</span>
+<span id="906">906</span>
+<span id="907">907</span>
+<span id="908">908</span>
+<span id="909">909</span>
+<span id="910">910</span>
+<span id="911">911</span>
+<span id="912">912</span>
+<span id="913">913</span>
+<span id="914">914</span>
+<span id="915">915</span>
+<span id="916">916</span>
+<span id="917">917</span>
+<span id="918">918</span>
+<span id="919">919</span>
+<span id="920">920</span>
+<span id="921">921</span>
+<span id="922">922</span>
+<span id="923">923</span>
+<span id="924">924</span>
+<span id="925">925</span>
+<span id="926">926</span>
+<span id="927">927</span>
+<span id="928">928</span>
+<span id="929">929</span>
+<span id="930">930</span>
+<span id="931">931</span>
+<span id="932">932</span>
+<span id="933">933</span>
+<span id="934">934</span>
+<span id="935">935</span>
+<span id="936">936</span>
+<span id="937">937</span>
+<span id="938">938</span>
+<span id="939">939</span>
+<span id="940">940</span>
+<span id="941">941</span>
+<span id="942">942</span>
+<span id="943">943</span>
+<span id="944">944</span>
+<span id="945">945</span>
+<span id="946">946</span>
+<span id="947">947</span>
+<span id="948">948</span>
+<span id="949">949</span>
+<span id="950">950</span>
+<span id="951">951</span>
+<span id="952">952</span>
+<span id="953">953</span>
+<span id="954">954</span>
+<span id="955">955</span>
+<span id="956">956</span>
+<span id="957">957</span>
+<span id="958">958</span>
+<span id="959">959</span>
+<span id="960">960</span>
+<span id="961">961</span>
+<span id="962">962</span>
+<span id="963">963</span>
+<span id="964">964</span>
+<span id="965">965</span>
+<span id="966">966</span>
+<span id="967">967</span>
+<span id="968">968</span>
+<span id="969">969</span>
+<span id="970">970</span>
+<span id="971">971</span>
+<span id="972">972</span>
+<span id="973">973</span>
+<span id="974">974</span>
+<span id="975">975</span>
+<span id="976">976</span>
+<span id="977">977</span>
+<span id="978">978</span>
+<span id="979">979</span>
+<span id="980">980</span>
+<span id="981">981</span>
+<span id="982">982</span>
+<span id="983">983</span>
+<span id="984">984</span>
+<span id="985">985</span>
+<span id="986">986</span>
+<span id="987">987</span>
+<span id="988">988</span>
+<span id="989">989</span>
+<span id="990">990</span>
+<span id="991">991</span>
+<span id="992">992</span>
+<span id="993">993</span>
+<span id="994">994</span>
+<span id="995">995</span>
+<span id="996">996</span>
+<span id="997">997</span>
+<span id="998">998</span>
+<span id="999">999</span>
+<span id="1000">1000</span>
+<span id="1001">1001</span>
+<span id="1002">1002</span>
+<span id="1003">1003</span>
+<span id="1004">1004</span>
+<span id="1005">1005</span>
+<span id="1006">1006</span>
+<span id="1007">1007</span>
+<span id="1008">1008</span>
+<span id="1009">1009</span>
+<span id="1010">1010</span>
+<span id="1011">1011</span>
+<span id="1012">1012</span>
+<span id="1013">1013</span>
+<span id="1014">1014</span>
+<span id="1015">1015</span>
+<span id="1016">1016</span>
+<span id="1017">1017</span>
+<span id="1018">1018</span>
+<span id="1019">1019</span>
+<span id="1020">1020</span>
+<span id="1021">1021</span>
+<span id="1022">1022</span>
+<span id="1023">1023</span>
+<span id="1024">1024</span>
+<span id="1025">1025</span>
+<span id="1026">1026</span>
+<span id="1027">1027</span>
+<span id="1028">1028</span>
+<span id="1029">1029</span>
+<span id="1030">1030</span>
+<span id="1031">1031</span>
+<span id="1032">1032</span>
+<span id="1033">1033</span>
+<span id="1034">1034</span>
+<span id="1035">1035</span>
+<span id="1036">1036</span>
+<span id="1037">1037</span>
+<span id="1038">1038</span>
+<span id="1039">1039</span>
+<span id="1040">1040</span>
+<span id="1041">1041</span>
+<span id="1042">1042</span>
+<span id="1043">1043</span>
+<span id="1044">1044</span>
+<span id="1045">1045</span>
+<span id="1046">1046</span>
+<span id="1047">1047</span>
+<span id="1048">1048</span>
+<span id="1049">1049</span>
+<span id="1050">1050</span>
+<span id="1051">1051</span>
+<span id="1052">1052</span>
+<span id="1053">1053</span>
+<span id="1054">1054</span>
+<span id="1055">1055</span>
+<span id="1056">1056</span>
+<span id="1057">1057</span>
+<span id="1058">1058</span>
+<span id="1059">1059</span>
+<span id="1060">1060</span>
+<span id="1061">1061</span>
+<span id="1062">1062</span>
+<span id="1063">1063</span>
+<span id="1064">1064</span>
+<span id="1065">1065</span>
+<span id="1066">1066</span>
+<span id="1067">1067</span>
+<span id="1068">1068</span>
+<span id="1069">1069</span>
+<span id="1070">1070</span>
+<span id="1071">1071</span>
+<span id="1072">1072</span>
+<span id="1073">1073</span>
+<span id="1074">1074</span>
+<span id="1075">1075</span>
+<span id="1076">1076</span>
+<span id="1077">1077</span>
+<span id="1078">1078</span>
+<span id="1079">1079</span>
+<span id="1080">1080</span>
+<span id="1081">1081</span>
+<span id="1082">1082</span>
+<span id="1083">1083</span>
+<span id="1084">1084</span>
+<span id="1085">1085</span>
+<span id="1086">1086</span>
+<span id="1087">1087</span>
+<span id="1088">1088</span>
+<span id="1089">1089</span>
+<span id="1090">1090</span>
+<span id="1091">1091</span>
+<span id="1092">1092</span>
+<span id="1093">1093</span>
+<span id="1094">1094</span>
+<span id="1095">1095</span>
+<span id="1096">1096</span>
+<span id="1097">1097</span>
+<span id="1098">1098</span>
+<span id="1099">1099</span>
+<span id="1100">1100</span>
+<span id="1101">1101</span>
+<span id="1102">1102</span>
+<span id="1103">1103</span>
+<span id="1104">1104</span>
+<span id="1105">1105</span>
+<span id="1106">1106</span>
+<span id="1107">1107</span>
+<span id="1108">1108</span>
+<span id="1109">1109</span>
+<span id="1110">1110</span>
+<span id="1111">1111</span>
+<span id="1112">1112</span>
+<span id="1113">1113</span>
+<span id="1114">1114</span>
+<span id="1115">1115</span>
+<span id="1116">1116</span>
+<span id="1117">1117</span>
+<span id="1118">1118</span>
+<span id="1119">1119</span>
+<span id="1120">1120</span>
+<span id="1121">1121</span>
+<span id="1122">1122</span>
+<span id="1123">1123</span>
+<span id="1124">1124</span>
+<span id="1125">1125</span>
+<span id="1126">1126</span>
+<span id="1127">1127</span>
+<span id="1128">1128</span>
+<span id="1129">1129</span>
+<span id="1130">1130</span>
+<span id="1131">1131</span>
+<span id="1132">1132</span>
+<span id="1133">1133</span>
+<span id="1134">1134</span>
+<span id="1135">1135</span>
+<span id="1136">1136</span>
+<span id="1137">1137</span>
+<span id="1138">1138</span>
+<span id="1139">1139</span>
+<span id="1140">1140</span>
+<span id="1141">1141</span>
+<span id="1142">1142</span>
+<span id="1143">1143</span>
+<span id="1144">1144</span>
+<span id="1145">1145</span>
+<span id="1146">1146</span>
+<span id="1147">1147</span>
+<span id="1148">1148</span>
+<span id="1149">1149</span>
+<span id="1150">1150</span>
+<span id="1151">1151</span>
+<span id="1152">1152</span>
+<span id="1153">1153</span>
+<span id="1154">1154</span>
+<span id="1155">1155</span>
+<span id="1156">1156</span>
+<span id="1157">1157</span>
+<span id="1158">1158</span>
+<span id="1159">1159</span>
+<span id="1160">1160</span>
+<span id="1161">1161</span>
+<span id="1162">1162</span>
+<span id="1163">1163</span>
+<span id="1164">1164</span>
+<span id="1165">1165</span>
+<span id="1166">1166</span>
+<span id="1167">1167</span>
+<span id="1168">1168</span>
+<span id="1169">1169</span>
+<span id="1170">1170</span>
+<span id="1171">1171</span>
+<span id="1172">1172</span>
+<span id="1173">1173</span>
+<span id="1174">1174</span>
+<span id="1175">1175</span>
+<span id="1176">1176</span>
+<span id="1177">1177</span>
+<span id="1178">1178</span>
+<span id="1179">1179</span>
+<span id="1180">1180</span>
+<span id="1181">1181</span>
+<span id="1182">1182</span>
+<span id="1183">1183</span>
+<span id="1184">1184</span>
+<span id="1185">1185</span>
+<span id="1186">1186</span>
+<span id="1187">1187</span>
+<span id="1188">1188</span>
+<span id="1189">1189</span>
+<span id="1190">1190</span>
+<span id="1191">1191</span>
+<span id="1192">1192</span>
+<span id="1193">1193</span>
+<span id="1194">1194</span>
+<span id="1195">1195</span>
+<span id="1196">1196</span>
+<span id="1197">1197</span>
+<span id="1198">1198</span>
+<span id="1199">1199</span>
+<span id="1200">1200</span>
+<span id="1201">1201</span>
+<span id="1202">1202</span>
+<span id="1203">1203</span>
+<span id="1204">1204</span>
+<span id="1205">1205</span>
+<span id="1206">1206</span>
+<span id="1207">1207</span>
+<span id="1208">1208</span>
+<span id="1209">1209</span>
+<span id="1210">1210</span>
+<span id="1211">1211</span>
+<span id="1212">1212</span>
+<span id="1213">1213</span>
+<span id="1214">1214</span>
+<span id="1215">1215</span>
+<span id="1216">1216</span>
+<span id="1217">1217</span>
+<span id="1218">1218</span>
+<span id="1219">1219</span>
+<span id="1220">1220</span>
+<span id="1221">1221</span>
+<span id="1222">1222</span>
+<span id="1223">1223</span>
+<span id="1224">1224</span>
+<span id="1225">1225</span>
+<span id="1226">1226</span>
+<span id="1227">1227</span>
+<span id="1228">1228</span>
+<span id="1229">1229</span>
+<span id="1230">1230</span>
+<span id="1231">1231</span>
+<span id="1232">1232</span>
+<span id="1233">1233</span>
+<span id="1234">1234</span>
+<span id="1235">1235</span>
+<span id="1236">1236</span>
+<span id="1237">1237</span>
+<span id="1238">1238</span>
+<span id="1239">1239</span>
+<span id="1240">1240</span>
+<span id="1241">1241</span>
+<span id="1242">1242</span>
+</pre><pre class="rust"><code><span class="comment">// Smoldot
+// Copyright (C) 2019-2022  Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later WITH Classpath-exception-2.0
+
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+
+</span><span class="doccomment">//! Background transactions service.
+//!
+//! The role of the [`TransactionsService`] is to manage the transactions that the user wants to
+//! send out, and report about their status.
+//!
+//! The [`TransactionsService`] is most of the time idle. When the user wants to emit a
+//! transaction on the network, it gets reported to the service, which then tries to send it to
+//! the peers the node is currently connected to. Afterwards, the service will inspect the stream
+//! of best and finalized blocks to find out whether the transaction has been included or not.
+//!
+//! # How watching transactions works
+//!
+//! Calling [`TransactionsService::submit_transaction`] returns a channel receiver that will contain
+//! status updates about this transaction.
+//!
+//! In order to implement this, the [`TransactionsService`] will follow all the blocks that are
+//! verified locally by the [`runtime_service::RuntimeService`] (see
+//! [`runtime_service::RuntimeService::subscribe_all`]) and download from the network the body of
+//! all the blocks in the best chain.
+//!
+//! When a block body download fails, it is ignored, in the hopes that the block will not be part
+//! of the finalized chain. If the block body download of a finalized block fails, we enter &quot;panic
+//! mode&quot; (not an actual Rust panic, just a way to describe the logic) and all watched
+//! transactions are dropped.
+//!
+//! The same &quot;panic mode&quot; happens if there&#39;s an accidental gap in the chain, which will typically
+//! happen if the [`runtime_service::RuntimeService`] is overwhelmed.
+//!
+//! If the channel returned by [`TransactionsService::submit_transaction`] is full, it will
+//! automatically be closed so as to not block the transactions service if the receive is too slow
+//! to be processed.
+//!
+//! # About duplicate unsigned transactions
+//!
+//! The Substrate and Polkadot runtimes support nonce-less unsigned transactions. In other words,
+//! a user can submit the same transaction (the exact same bytes every time) as many time as they
+//! want.
+//!
+//! While the chain can accept the same transaction multiple times over time, a Substrate node
+//! will only allow submitting it *once at a time*. In other words, any given unsigned transaction
+//! will never be included more than once in any given block. If you try to submit an unsigned
+//! transaction while the same transaction is already pending, the Substrate node will ignore it
+//! or return an error.
+//!
+//! Contrary to Substrate, the smoldot Wasm client can be used by multiple UIs at the same time.
+//! When a UI submits an unsigned transaction, we don&#39;t want to do the same as Substrate and
+//! refuse it if it is already pending, as it would make it possible for a UI to determine
+//! whether another UI has already submitted this transaction, and thus allow communications
+//! between UIs. Instead, the smoldot Wasm client return another sender to the same already-pending
+//! transaction.
+//!
+
+</span><span class="kw">use crate</span>::{network_service, platform::Platform, runtime_service, sync_service};
+
+<span class="kw">use </span>alloc::{
+    borrow::ToOwned <span class="kw">as _</span>,
+    boxed::Box,
+    format,
+    string::{String, ToString <span class="kw">as _</span>},
+    sync::Arc,
+    vec::Vec,
+};
+<span class="kw">use </span>core::{
+    cmp, iter,
+    marker::PhantomData,
+    num::{NonZeroU32, NonZeroUsize},
+    time::Duration,
+};
+<span class="kw">use </span>futures::{channel::mpsc, lock::Mutex, prelude::<span class="kw-2">*</span>, stream::FuturesUnordered};
+<span class="kw">use </span>itertools::Itertools <span class="kw">as _</span>;
+<span class="kw">use </span>smoldot::{
+    header,
+    informant::HashDisplay,
+    libp2p::peer_id::PeerId,
+    network::protocol,
+    transactions::{light_pool, validate},
+};
+
+<span class="doccomment">/// Configuration for a [`TransactionsService`].
+</span><span class="kw">pub struct </span>Config&lt;TPlat: Platform&gt; {
+    <span class="doccomment">/// Name of the chain, for logging purposes.
+    ///
+    /// &gt; **Note**: This name will be directly printed out. Any special character should already
+    /// &gt;           have been filtered out from this name.
+    </span><span class="kw">pub </span>log_name: String,
+
+    <span class="doccomment">/// Closure that spawns background tasks.
+    </span><span class="kw">pub </span>tasks_executor: Box&lt;<span class="kw">dyn </span>FnMut(String, future::BoxFuture&lt;<span class="lifetime">&#39;static</span>, ()&gt;) + Send&gt;,
+
+    <span class="doccomment">/// Service responsible for synchronizing the chain.
+    </span><span class="kw">pub </span>sync_service: Arc&lt;sync_service::SyncService&lt;TPlat&gt;&gt;,
+
+    <span class="doccomment">/// Service responsible for synchronizing the chain.
+    </span><span class="kw">pub </span>runtime_service: Arc&lt;runtime_service::RuntimeService&lt;TPlat&gt;&gt;,
+
+    <span class="doccomment">/// Access to the network, and index of the chain to use to gossip transactions from the point
+    /// of view of the network service.
+    </span><span class="kw">pub </span>network_service: (Arc&lt;network_service::NetworkService&lt;TPlat&gt;&gt;, usize),
+
+    <span class="doccomment">/// Maximum number of pending transactions allowed in the service.
+    ///
+    /// Any extra transaction will lead to [`DropReason::MaxPendingTransactionsReached`].
+    </span><span class="kw">pub </span>max_pending_transactions: NonZeroU32,
+
+    <span class="doccomment">/// Maximum number of block body downloads that can be performed in parallel.
+    ///
+    /// &gt; **Note**: This is the maximum number of *blocks* whose body is being download, not the
+    /// &gt;           number of block requests emitted on the network.
+    </span><span class="kw">pub </span>max_concurrent_downloads: NonZeroU32,
+
+    <span class="doccomment">/// Maximum number of transaction validations that can be performed in parallel.
+    </span><span class="kw">pub </span>max_concurrent_validations: NonZeroU32,
+}
+
+<span class="doccomment">/// See [the module-level documentation](..).
+</span><span class="kw">pub struct </span>TransactionsService&lt;TPlat&gt; {
+    <span class="doccomment">/// Sending messages to the background task.
+    </span>to_background: Mutex&lt;mpsc::Sender&lt;ToBackground&gt;&gt;,
+
+    platform: PhantomData&lt;<span class="kw">fn</span>() -&gt; TPlat&gt;,
+}
+
+<span class="kw">impl</span>&lt;TPlat: Platform&gt; TransactionsService&lt;TPlat&gt; {
+    <span class="doccomment">/// Builds a new service.
+    </span><span class="kw">pub async fn </span>new(<span class="kw-2">mut </span>config: Config&lt;TPlat&gt;) -&gt; <span class="self">Self </span>{
+        <span class="kw">let </span>log_target = <span class="macro">format!</span>(<span class="string">&quot;tx-service-{}&quot;</span>, config.log_name);
+        <span class="kw">let </span>(to_background, from_foreground) = mpsc::channel(<span class="number">8</span>);
+
+        (config.tasks_executor)(
+            log_target.clone(),
+            Box::pin(background_task::&lt;TPlat&gt;(
+                log_target,
+                config.sync_service,
+                config.runtime_service,
+                config.network_service.<span class="number">0</span>,
+                config.network_service.<span class="number">1</span>,
+                from_foreground,
+                usize::try_from(config.max_concurrent_downloads.get())
+                    .unwrap_or(usize::max_value()),
+                usize::try_from(config.max_pending_transactions.get())
+                    .unwrap_or(usize::max_value()),
+                usize::try_from(config.max_concurrent_validations.get())
+                    .unwrap_or(usize::max_value()),
+            )),
+        );
+
+        TransactionsService {
+            to_background: Mutex::new(to_background),
+            platform: PhantomData,
+        }
+    }
+
+    <span class="doccomment">/// Adds a transaction to the service. The service will try to send it out as soon as
+    /// possible.
+    ///
+    /// Must pass as parameter the SCALE-encoded transaction.
+    ///
+    /// The return value of this method is a channel which will receive updates on the state
+    /// of the transaction. The channel is closed when no new update is expected or if it becomes
+    /// full.
+    ///
+    /// &gt; **Note**: Dropping the value returned does not cancel sending out the transaction.
+    ///
+    /// If this exact same transaction has already been submitted before, the transaction isn&#39;t
+    /// added a second time. Instead, a second channel is created pointing to the already-existing
+    /// transaction.
+    </span><span class="kw">pub async fn </span>submit_and_watch_transaction(
+        <span class="kw-2">&amp;</span><span class="self">self</span>,
+        transaction_bytes: Vec&lt;u8&gt;,
+        channel_size: usize,
+    ) -&gt; mpsc::Receiver&lt;TransactionStatus&gt; {
+        <span class="kw">let </span>(updates_report, rx) = mpsc::channel(channel_size);
+
+        <span class="self">self</span>.to_background
+            .lock()
+            .<span class="kw">await
+            </span>.send(ToBackground::SubmitTransaction {
+                transaction_bytes,
+                updates_report: <span class="prelude-val">Some</span>(updates_report),
+            })
+            .<span class="kw">await
+            </span>.unwrap();
+
+        rx
+    }
+
+    <span class="doccomment">/// Similar to [`TransactionsService::submit_and_watch_transaction`], but doesn&#39;t return any
+    /// channel.
+    </span><span class="kw">pub async fn </span>submit_transaction(<span class="kw-2">&amp;</span><span class="self">self</span>, transaction_bytes: Vec&lt;u8&gt;) {
+        <span class="self">self</span>.to_background
+            .lock()
+            .<span class="kw">await
+            </span>.send(ToBackground::SubmitTransaction {
+                transaction_bytes,
+                updates_report: <span class="prelude-val">None</span>,
+            })
+            .<span class="kw">await
+            </span>.unwrap();
+    }
+}
+
+<span class="doccomment">/// Update on the state of a transaction in the service.
+///
+/// &gt; **Note**: Because this code isn&#39;t an *actual* transactions pool that leverages the runtime,
+/// &gt;           some variants (e.g. `Invalid`) are missing compared to the ones that can be found
+/// &gt;           in Substrate, as they can&#39;t possibly be generated by this implementation.
+/// &gt;           Additionally, an equivalent to the `Ready` state in Substrate is missing as it
+/// &gt;           is the default state.
+</span><span class="attribute">#[derive(Debug, Clone)]
+</span><span class="kw">pub enum </span>TransactionStatus {
+    <span class="doccomment">/// Transaction has been broadcasted to the given peers.
+    </span>Broadcast(Vec&lt;PeerId&gt;),
+
+    <span class="doccomment">/// The block in which a block is included has changed.
+    </span>IncludedBlockUpdate {
+        <span class="doccomment">/// If `Some`, the transaction is included in the block of the best chain with the given
+        /// hash and at the given index. If `None`, the transaction isn&#39;t present in the best
+        /// chain.
+        </span>block_hash: <span class="prelude-ty">Option</span>&lt;([u8; <span class="number">32</span>], u32)&gt;,
+    },
+
+    <span class="doccomment">/// Transaction has been removed from the pool.
+    ///
+    /// This is always the last message sent back by the channel reporting the status.
+    </span>Dropped(DropReason),
+}
+
+<span class="doccomment">/// See [`TransactionStatus::Dropped`].
+</span><span class="attribute">#[derive(Debug, Clone)]
+</span><span class="kw">pub enum </span>DropReason {
+    <span class="doccomment">/// Transaction has been included in a finalized block.
+    ///
+    /// This is a success path.
+    </span>Finalized { block_hash: [u8; <span class="number">32</span>], index: u32 },
+
+    <span class="doccomment">/// Transaction has been dropped because there was a gap in the chain of blocks. It is
+    /// impossible to know.
+    </span>GapInChain,
+
+    <span class="doccomment">/// Transaction has been dropped because the maximum number of transactions in the pool has
+    /// been reached.
+    </span>MaxPendingTransactionsReached,
+
+    <span class="doccomment">/// Transaction has been dropped because it is invalid.
+    </span>Invalid(validate::TransactionValidityError),
+
+    <span class="doccomment">/// Transaction has been dropped because we have failed to validate it.
+    </span>ValidateError(ValidateTransactionError),
+}
+
+<span class="doccomment">/// Failed to check the validity of a transaction.
+</span><span class="attribute">#[derive(Debug, derive_more::Display, Clone)]
+</span><span class="kw">pub enum </span>ValidateTransactionError {
+    <span class="doccomment">/// Error during the network request.
+    </span><span class="attribute">#[display(fmt = <span class="string">&quot;{}&quot;</span>, _0)]
+    </span>Call(runtime_service::RuntimeCallError),
+    <span class="doccomment">/// Error during the validation runtime call.
+    </span><span class="attribute">#[display(fmt = <span class="string">&quot;{}&quot;</span>, _0)]
+    </span>Validation(validate::Error),
+    <span class="doccomment">/// Tried to access the next key of a storage key. This isn&#39;t possible through a call request
+    /// at the moment.
+    </span>NextKeyForbidden,
+}
+
+<span class="attribute">#[derive(Debug, Clone)]
+</span><span class="kw">enum </span>InvalidOrError {
+    Invalid(validate::TransactionValidityError),
+    ValidateError(ValidateTransactionError),
+}
+
+<span class="attribute">#[derive(Debug, Clone)]
+</span><span class="kw">enum </span>ValidationError {
+    InvalidOrError(InvalidOrError),
+    ObsoleteSubscription,
+}
+
+<span class="doccomment">/// Message sent from the foreground service to the background.
+</span><span class="kw">enum </span>ToBackground {
+    SubmitTransaction {
+        transaction_bytes: Vec&lt;u8&gt;,
+        updates_report: <span class="prelude-ty">Option</span>&lt;mpsc::Sender&lt;TransactionStatus&gt;&gt;,
+    },
+}
+
+<span class="doccomment">/// Background task running in parallel of the front service.
+</span><span class="kw">async fn </span>background_task&lt;TPlat: Platform&gt;(
+    log_target: String,
+    sync_service: Arc&lt;sync_service::SyncService&lt;TPlat&gt;&gt;,
+    runtime_service: Arc&lt;runtime_service::RuntimeService&lt;TPlat&gt;&gt;,
+    network_service: Arc&lt;network_service::NetworkService&lt;TPlat&gt;&gt;,
+    network_chain_index: usize,
+    <span class="kw-2">mut </span>from_foreground: mpsc::Receiver&lt;ToBackground&gt;,
+    max_concurrent_downloads: usize,
+    max_pending_transactions: usize,
+    max_concurrent_validations: usize,
+) {
+    <span class="kw">let </span>transactions_capacity = cmp::min(<span class="number">8</span>, max_pending_transactions);
+    <span class="kw">let </span>blocks_capacity = <span class="number">32</span>;
+
+    <span class="kw">let </span><span class="kw-2">mut </span>worker = Worker {
+        sync_service,
+        runtime_service,
+        network_service,
+        network_chain_index,
+        pending_transactions: light_pool::LightPool::new(light_pool::Config {
+            transactions_capacity,
+            blocks_capacity,
+            finalized_block_hash: [<span class="number">0</span>; <span class="number">32</span>], <span class="comment">// Dummy value. Pool is re-initialized below.
+        </span>}),
+        block_downloads: FuturesUnordered::new(),
+        validations_in_progress: FuturesUnordered::new(),
+        next_reannounce: FuturesUnordered::new(),
+        max_concurrent_downloads,
+        max_pending_transactions,
+    };
+
+    <span class="comment">// TODO: must periodically re-send transactions that aren&#39;t included in block yet
+
+    </span><span class="lifetime">&#39;channels_rebuild</span>: <span class="kw">loop </span>{
+        <span class="comment">// This loop is entered when it is necessary to rebuild the subscriptions with the runtime
+        // service. This happens when there is a gap in the blocks, either intentionally (e.g.
+        // after a Grandpa warp sync) or because the transactions service was too busy to process
+        // the new blocks.
+
+        // The buffer size should be large enough so that, if the CPU is busy, it doesn&#39;t
+        // become full before the execution of the transactions service resumes.
+        // The maximum number of pinned block is ignored, as this maximum is a way to avoid
+        // malicious behaviors. This code is by definition not considered malicious.
+        </span><span class="kw">let </span><span class="kw-2">mut </span>subscribe_all = worker
+            .runtime_service
+            .subscribe_all(
+                <span class="string">&quot;transactions-service&quot;</span>,
+                <span class="number">32</span>,
+                NonZeroUsize::new(usize::max_value()).unwrap(),
+            )
+            .<span class="kw">await</span>;
+        <span class="kw">let </span>initial_finalized_block_hash = header::hash_from_scale_encoded_header(
+            <span class="kw-2">&amp;</span>subscribe_all.finalized_block_scale_encoded_header,
+        );
+
+        <span class="comment">// Drop all pending transactions of the pool.
+        </span><span class="kw">for </span>(<span class="kw">_</span>, pending) <span class="kw">in </span>worker.pending_transactions.transactions_iter_mut() {
+            <span class="comment">// TODO: only do this if transaction hasn&#39;t been validated yet
+            </span>pending.update_status(TransactionStatus::Dropped(DropReason::GapInChain));
+        }
+
+        <span class="comment">// Reset the blocks tracking state machine.
+        </span><span class="kw">let </span>dropped_transactions = worker
+            .pending_transactions
+            .transactions_iter()
+            .map(|(tx_id, <span class="kw">_</span>)| {
+                HashDisplay(worker.pending_transactions.scale_encoding(tx_id).unwrap())
+            })
+            .join(<span class="string">&quot;,&quot;</span>);
+        worker.pending_transactions = light_pool::LightPool::new(light_pool::Config {
+            transactions_capacity,
+            blocks_capacity,
+            finalized_block_hash: initial_finalized_block_hash,
+        });
+
+        <span class="kw">for </span>block <span class="kw">in </span>subscribe_all.non_finalized_blocks_ancestry_order {
+            <span class="kw">let </span>hash = header::hash_from_scale_encoded_header(<span class="kw-2">&amp;</span>block.scale_encoded_header);
+            worker.pending_transactions.add_block(
+                hash,
+                <span class="kw-2">&amp;</span>block.parent_hash,
+                Block {
+                    scale_encoded_header: block.scale_encoded_header,
+                    failed_downloads: <span class="number">0</span>,
+                    downloading: <span class="bool-val">false</span>,
+                },
+            );
+            <span class="kw">if </span>block.is_new_best {
+                worker.set_best_block(<span class="kw-2">&amp;</span>log_target, <span class="kw-2">&amp;</span>hash);
+            }
+        }
+
+        <span class="comment">// Reset the other fields.
+        </span>worker.block_downloads.clear();
+        worker.validations_in_progress.clear();
+        worker.next_reannounce.clear();
+
+        <span class="macro">log::debug!</span>(
+            target: <span class="kw-2">&amp;</span>log_target,
+            <span class="string">&quot;Reset(new_finalized={}. dropped-transactions={{{}}})&quot;</span>,
+            HashDisplay(<span class="kw-2">&amp;</span>initial_finalized_block_hash),
+            dropped_transactions
+        );
+
+        <span class="kw">loop </span>{
+            <span class="comment">// If the finalized block moved in such a way that there would be blocks in the
+            // pool whose height is inferior to `latest_finalized - 32`, then jump to
+            // &quot;catastrophic mode&quot; and reset everything. This is to avoid the possibility of an
+            // unreasonable memory consumption.
+            </span><span class="kw">if </span>worker.pending_transactions.oldest_block_finality_lag() &gt;= <span class="number">32 </span>{
+                <span class="kw">continue </span><span class="lifetime">&#39;channels_rebuild</span>;
+            }
+
+            <span class="comment">// Start the validation process of transactions that need to be validated.
+            </span><span class="kw">while </span>worker.validations_in_progress.len() &lt; max_concurrent_validations {
+                <span class="comment">// Find a transaction that needs to be validated.
+                //
+                // While this is an `O(n)` process, in practice we pick the first transaction not
+                // currently being validated, and only `max_concurrent_validations` transactions
+                // in the list don&#39;t match that criteria. Since `max_concurrent_validations`
+                // should be pretty low, this search should complete very quickly.
+                </span><span class="kw">let </span>to_start_validate = worker
+                    .pending_transactions
+                    .unvalidated_transactions()
+                    .filter(|(<span class="kw">_</span>, tx)| tx.validation_in_progress.is_none())
+                    .next()
+                    .map(|(tx_id, ..)| tx_id);
+                <span class="kw">let </span>to_start_validate = <span class="kw">match </span>to_start_validate {
+                    <span class="prelude-val">Some</span>(tx_id) =&gt; tx_id,
+                    <span class="prelude-val">None </span>=&gt; <span class="kw">break</span>,
+                };
+
+                <span class="comment">// Create the `Future` of the validation process.
+                </span><span class="kw">let </span>validation_future = {
+                    <span class="comment">// Find which block to validate the transaction against.
+                    </span><span class="kw">let </span>block_hash = <span class="kw-2">*</span>worker.pending_transactions.best_block_hash();
+
+                    <span class="comment">// It is possible for the current best block to be equal to the finalized
+                    // block, in which case it will not be in the data structure and will already
+                    // be unpinned in the runtime service.
+                    // In that situation, we simply don&#39;t start any validation.
+                    // TODO: is this problem worth solving? ^
+                    </span><span class="kw">let </span>scale_encoded_header =
+                        <span class="kw">match </span>worker.pending_transactions.block_user_data(<span class="kw-2">&amp;</span>block_hash) {
+                            <span class="prelude-val">Some</span>(b) =&gt; b.scale_encoded_header.clone(),
+                            <span class="prelude-val">None </span>=&gt; <span class="kw">break</span>,
+                        };
+
+                    <span class="comment">// Make copies of everything in order to move the values into the future.
+                    </span><span class="kw">let </span>runtime_service = worker.runtime_service.clone();
+                    <span class="kw">let </span>log_target = log_target.clone();
+                    <span class="kw">let </span>relay_chain_sync_subscription_id = subscribe_all.new_blocks.id();
+                    <span class="kw">let </span>scale_encoded_transaction = worker
+                        .pending_transactions
+                        .scale_encoding(to_start_validate)
+                        .unwrap()
+                        .to_owned();
+                    <span class="comment">// TODO: race condition /!\ the block could be pruned and unpinned before this future starts executing
+                    </span><span class="kw">async move </span>{
+                        <span class="kw">let </span>result = validate_transaction(
+                            <span class="kw-2">&amp;</span>log_target,
+                            <span class="kw-2">&amp;</span>runtime_service,
+                            relay_chain_sync_subscription_id,
+                            block_hash,
+                            <span class="kw-2">&amp;</span>scale_encoded_header,
+                            scale_encoded_transaction,
+                            validate::TransactionSource::External,
+                        )
+                        .<span class="kw">await</span>;
+                        (block_hash, result)
+                    }
+                };
+
+                <span class="comment">// The future that will yield the validation result is stored in the
+                // `PendingTransaction`, while the future that executes the validation (and
+                // yields `()`) is stored in `validations_in_progress`.
+                </span><span class="kw">let </span>(to_execute, result_rx) = validation_future.remote_handle();
+                worker
+                    .validations_in_progress
+                    .push(to_execute.map(<span class="kw">move </span>|()| to_start_validate).boxed());
+                <span class="kw">let </span>tx = worker
+                    .pending_transactions
+                    .transaction_user_data_mut(to_start_validate)
+                    .unwrap();
+                <span class="macro">debug_assert!</span>(tx.validation_in_progress.is_none());
+                tx.validation_in_progress = <span class="prelude-val">Some</span>(result_rx);
+            }
+
+            <span class="comment">// Remove transactions that have been determined to be invalid.
+            </span><span class="kw">loop </span>{
+                <span class="comment">// Note that we really would like to use a `while let` loop, but the Rust borrow
+                // checker doesn&#39;t permit it.
+                </span><span class="kw">let </span>(tx_id, <span class="kw">_</span>, error) = <span class="kw">match </span>worker
+                    .pending_transactions
+                    .invalid_transactions_finalized_block()
+                    .next()
+                {
+                    <span class="prelude-val">Some</span>(v) =&gt; v,
+                    <span class="prelude-val">None </span>=&gt; <span class="kw">break</span>,
+                };
+
+                <span class="comment">// Clone the error because we need to unborrow `worker.pending_transactions`.
+                </span><span class="kw">let </span>error = error.clone();
+
+                <span class="kw">let </span>(tx_body, <span class="kw-2">mut </span>transaction) =
+                    worker.pending_transactions.remove_transaction(tx_id);
+
+                <span class="macro">log::debug!</span>(
+                    target: <span class="kw-2">&amp;</span>log_target,
+                    <span class="string">&quot;Discarded(tx_hash={}, error={:?})&quot;</span>,
+                    HashDisplay(<span class="kw-2">&amp;</span>blake2_hash(<span class="kw-2">&amp;</span>tx_body)),
+                    error,
+                );
+
+                transaction.update_status(TransactionStatus::Dropped(<span class="kw">match </span>error {
+                    InvalidOrError::Invalid(err) =&gt; DropReason::Invalid(err),
+                    InvalidOrError::ValidateError(err) =&gt; DropReason::ValidateError(err),
+                }));
+            }
+
+            <span class="comment">// Start block bodies downloads that need to be started.
+            </span><span class="kw">while </span>worker.block_downloads.len() &lt; worker.max_concurrent_downloads {
+                <span class="comment">// TODO: prioritize best chain?
+                </span><span class="kw">let </span>block_hash_number = worker
+                    .pending_transactions
+                    .missing_block_bodies()
+                    .find(|(<span class="kw">_</span>, block)| {
+                        <span class="comment">// The transaction pool isn&#39;t aware of the fact that we&#39;re currently
+                        // downloading a block&#39;s body. Skip when that is the case.
+                        </span><span class="kw">if </span>block.downloading {
+                            <span class="kw">return </span><span class="bool-val">false</span>;
+                        }
+
+                        <span class="comment">// Don&#39;t try again block downloads that have failed before.
+                        </span><span class="kw">if </span>block.failed_downloads &gt;= <span class="number">1 </span>{
+                            <span class="comment">// TODO: try downloading again if finalized or best chain
+                            </span><span class="kw">return </span><span class="bool-val">false</span>;
+                        }
+
+                        <span class="bool-val">true
+                    </span>})
+                    .map(|(hash, block)| {
+                        <span class="comment">// TODO: unwrap?! should only insert valid blocks in the worker
+                        </span><span class="kw">let </span>decoded = header::decode(
+                            <span class="kw-2">&amp;</span>block.scale_encoded_header,
+                            worker.sync_service.block_number_bytes(),
+                        )
+                        .unwrap();
+                        (<span class="kw-2">*</span>hash, decoded.number)
+                    });
+                <span class="kw">let </span>(block_hash, block_number) = <span class="kw">match </span>block_hash_number {
+                    <span class="prelude-val">Some</span>(b) =&gt; b,
+                    <span class="prelude-val">None </span>=&gt; <span class="kw">break</span>,
+                };
+
+                <span class="comment">// Actual download start.
+                </span>worker.block_downloads.push({
+                    <span class="kw">let </span>download_future = worker.sync_service.clone().block_query(
+                        block_number,
+                        block_hash,
+                        protocol::BlocksRequestFields {
+                            body: <span class="bool-val">true</span>,
+                            header: <span class="bool-val">true</span>, <span class="comment">// TODO: must be true in order for the body to be verified; fix the sync_service to not require that
+                            </span>justifications: <span class="bool-val">false</span>,
+                        },
+                        <span class="number">3</span>,
+                        Duration::from_secs(<span class="number">8</span>),
+                        NonZeroU32::new(<span class="number">3</span>).unwrap(),
+                    );
+
+                    <span class="kw">async move </span>{ (block_hash, download_future.<span class="kw">await</span>.map(|b| b.body.unwrap())) }
+                        .boxed()
+                });
+
+                worker
+                    .pending_transactions
+                    .block_user_data_mut(<span class="kw-2">&amp;</span>block_hash)
+                    .unwrap()
+                    .downloading = <span class="bool-val">true</span>;
+
+                <span class="macro">log::debug!</span>(
+                    target: <span class="kw-2">&amp;</span>log_target,
+                    <span class="string">&quot;BlockDownloads &lt;= Start(block={})&quot;</span>,
+                    HashDisplay(<span class="kw-2">&amp;</span>block_hash)
+                );
+            }
+
+            <span class="comment">// Remove finalized blocks from the pool when possible.
+            </span><span class="kw">for </span>block <span class="kw">in </span>worker.pending_transactions.prune_finalized_with_body() {
+                <span class="comment">// All blocks in `pending_transactions` are pinned within the runtime service.
+                // Unpin them when they&#39;re removed.
+                </span>subscribe_all
+                    .new_blocks
+                    .unpin_block(<span class="kw-2">&amp;</span>block.block_hash)
+                    .<span class="kw">await</span>;
+
+                <span class="macro">log::debug!</span>(
+                    target: <span class="kw-2">&amp;</span>log_target,
+                    <span class="string">&quot;Finalized(block={}, body-transactions={{{}}})&quot;</span>,
+                    HashDisplay(<span class="kw-2">&amp;</span>block.block_hash),
+                    block
+                        .included_transactions
+                        .iter()
+                        .map(|tx| HashDisplay(<span class="kw-2">&amp;</span>blake2_hash(<span class="kw-2">&amp;</span>tx.scale_encoding)).to_string())
+                        .join(<span class="string">&quot;, &quot;</span>)
+                );
+
+                <span class="macro">debug_assert!</span>(!block.user_data.downloading);
+                <span class="kw">for </span><span class="kw-2">mut </span>tx <span class="kw">in </span>block.included_transactions {
+                    <span class="comment">// We assume that there&#39;s no more than 2&lt;&lt;32 transactions per block.
+                    </span><span class="kw">let </span>body_index = u32::try_from(tx.index_in_block).unwrap();
+                    tx.user_data
+                        .update_status(TransactionStatus::Dropped(DropReason::Finalized {
+                            block_hash: block.block_hash,
+                            index: body_index,
+                        }));
+                    <span class="comment">// `tx` is no longer in the pool.
+                </span>}
+            }
+
+            <span class="macro">futures::select! </span>{
+                notification = subscribe_all.new_blocks.next().fuse() =&gt; {
+                    <span class="kw">match </span>notification {
+                        <span class="prelude-val">Some</span>(runtime_service::Notification::Block(new_block)) =&gt; {
+                            <span class="kw">let </span>hash = header::hash_from_scale_encoded_header(<span class="kw-2">&amp;</span>new_block.scale_encoded_header);
+                            worker.pending_transactions.add_block(
+                                header::hash_from_scale_encoded_header(<span class="kw-2">&amp;</span>new_block.scale_encoded_header),
+                                <span class="kw-2">&amp;</span>new_block.parent_hash,
+                                Block {
+                                    scale_encoded_header: new_block.scale_encoded_header,
+                                    failed_downloads: <span class="number">0</span>,
+                                    downloading: <span class="bool-val">false</span>,
+                                },
+                            );
+                            <span class="kw">if </span>new_block.is_new_best {
+                                worker.set_best_block(<span class="kw-2">&amp;</span>log_target, <span class="kw-2">&amp;</span>hash);
+                            }
+                        },
+                        <span class="prelude-val">Some</span>(runtime_service::Notification::Finalized { hash, best_block_hash, .. }) =&gt; {
+                            worker.set_best_block(<span class="kw-2">&amp;</span>log_target, <span class="kw-2">&amp;</span>best_block_hash);
+                            <span class="kw">for </span>pruned <span class="kw">in </span>worker
+                                .pending_transactions
+                                .set_finalized_block(<span class="kw-2">&amp;</span>hash)
+                            {
+                                <span class="comment">// All blocks in `pending_transactions` are pinned within the
+                                // runtime service. Unpin them when they&#39;re removed.
+                                </span>subscribe_all.new_blocks.unpin_block(<span class="kw-2">&amp;</span>pruned.<span class="number">0</span>).<span class="kw">await</span>;
+
+                                <span class="comment">// Note that we could in principle interrupt any on-going
+                                // download of that block, but it is not worth the effort.
+                            </span>}
+                        },
+                        <span class="prelude-val">Some</span>(runtime_service::Notification::BestBlockChanged { hash }) =&gt; {
+                            worker.set_best_block(<span class="kw-2">&amp;</span>log_target, <span class="kw-2">&amp;</span>hash);
+                        },
+                        <span class="prelude-val">None </span>=&gt; <span class="kw">continue </span><span class="lifetime">&#39;channels_rebuild
+                    </span>}
+                },
+
+                download = worker.block_downloads.select_next_some() =&gt; {
+                    <span class="comment">// A block body download has finished, successfully or not.
+                    </span><span class="kw">let </span>(block_hash, block_body) = download;
+
+                    <span class="kw">let </span><span class="kw-2">mut </span>block = <span class="kw">match </span>worker.pending_transactions.block_user_data_mut(<span class="kw-2">&amp;</span>block_hash) {
+                        <span class="prelude-val">Some</span>(b) =&gt; b,
+                        <span class="prelude-val">None </span>=&gt; {
+                            <span class="comment">// It is possible that this block has been discarded because a sibling
+                            // or uncle has been finalized. This is a normal situation.
+                            </span><span class="kw">continue
+                        </span>},
+                    };
+
+                    <span class="macro">debug_assert!</span>(block.downloading);
+                    block.downloading = <span class="bool-val">false</span>;
+                    <span class="kw">if </span>block_body.is_err() {
+                        block.failed_downloads = block.failed_downloads.saturating_add(<span class="number">1</span>);
+                    }
+
+                    <span class="kw">if let </span><span class="prelude-val">Ok</span>(block_body) = block_body {
+                        <span class="kw">let </span>block_body_size = block_body.len();
+                        <span class="kw">let </span>included_transactions = worker
+                            .pending_transactions
+                            .set_block_body(<span class="kw-2">&amp;</span>block_hash, block_body.into_iter())
+                            .collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;();
+
+                        <span class="macro">log::debug!</span>(
+                            target: <span class="kw-2">&amp;</span>log_target,
+                            <span class="string">&quot;BlockDownloads =&gt; Success(block={}, included-transactions={{{}}})&quot;</span>,
+                            HashDisplay(<span class="kw-2">&amp;</span>block_hash),
+                            included_transactions.iter()
+                                .map(|(id, <span class="kw">_</span>)| HashDisplay(<span class="kw-2">&amp;</span>blake2_hash(worker.pending_transactions.scale_encoding(<span class="kw-2">*</span>id).unwrap())).to_string())
+                                .join(<span class="string">&quot;, &quot;</span>)
+                        );
+
+                        <span class="kw">for </span>(tx_id, body_index) <span class="kw">in </span>included_transactions {
+                            <span class="macro">debug_assert!</span>(body_index &lt; block_body_size);
+                            <span class="kw">let </span>tx = worker.pending_transactions.transaction_user_data_mut(tx_id).unwrap();
+                            <span class="comment">// We assume that there&#39;s no more than 2&lt;&lt;32 transactions per block.
+                            </span><span class="kw">let </span>body_index = u32::try_from(body_index).unwrap();
+                            tx.update_status(TransactionStatus::IncludedBlockUpdate { block_hash: <span class="prelude-val">Some</span>((block_hash, body_index)) });
+                        }
+
+                    } <span class="kw">else </span>{
+                        <span class="macro">log::debug!</span>(
+                            target: <span class="kw-2">&amp;</span>log_target,
+                            <span class="string">&quot;BlockDownloads =&gt; Failed(block={})&quot;</span>,
+                            HashDisplay(<span class="kw-2">&amp;</span>block_hash)
+                        );
+                    }
+                },
+
+                maybe_reannounce_tx_id = worker.next_reannounce.select_next_some() =&gt; {
+                    <span class="comment">// A transaction reannounce future has finished. This doesn&#39;t necessarily mean
+                    // that a validation actually needs to be reannounced. The provided
+                    // `maybe_reannounce_tx_id` is a hint as to which transaction might need to be
+                    // reannounced, but without a strong guarantee.
+
+                    // `continue` if transaction doesn&#39;t exist. False positive.
+                    </span><span class="kw">if </span>worker.pending_transactions.transaction_user_data(maybe_reannounce_tx_id).is_none() {
+                        <span class="kw">continue</span>;
+                    }
+
+                    <span class="comment">// Don&#39;t gossip the transaction if it hasn&#39;t been validated or is already
+                    // included.
+                    // TODO: if best block changes, we would need to reset all the re-announce period of all transactions, awkward!
+                    // TODO: also, if this is false, then the transaction might never be re-announced ever again
+                    </span><span class="kw">if </span>worker.pending_transactions.is_included_best_chain(maybe_reannounce_tx_id) ||
+                        !worker.pending_transactions.is_valid_against_best_block(maybe_reannounce_tx_id)
+                    {
+                        <span class="kw">continue</span>;
+                    }
+
+                    <span class="kw">let </span>now = TPlat::now();
+                    <span class="kw">let </span>tx = worker.pending_transactions.transaction_user_data_mut(maybe_reannounce_tx_id).unwrap();
+                    <span class="kw">if </span>tx.when_reannounce &gt; now {
+                        <span class="kw">continue</span>;
+                    }
+
+                    <span class="comment">// TODO: only announce if propagate is true
+
+                    // Update transaction state for the next re-announce.
+                    </span>tx.when_reannounce = now + Duration::from_secs(<span class="number">5</span>);
+                    worker.next_reannounce.push(<span class="kw">async move </span>{
+                        TPlat::sleep(Duration::from_secs(<span class="number">5</span>)).<span class="kw">await</span>;
+                        maybe_reannounce_tx_id
+                    }.boxed());
+
+                    <span class="comment">// Perform the announce.
+                    </span><span class="kw">let </span>peers_sent = worker.network_service
+                        .clone()
+                        .announce_transaction(
+                            worker.network_chain_index,
+                            worker.pending_transactions.scale_encoding(maybe_reannounce_tx_id).unwrap()
+                        )
+                        .<span class="kw">await</span>;
+                    <span class="macro">log::debug!</span>(
+                        target: <span class="kw-2">&amp;</span>log_target,
+                        <span class="string">&quot;NetworkService &lt;= Announced(tx={}, peers={{{}}})&quot;</span>,
+                        HashDisplay(<span class="kw-2">&amp;</span>blake2_hash(worker.pending_transactions.scale_encoding(maybe_reannounce_tx_id).unwrap())),
+                        peers_sent.iter().join(<span class="string">&quot;, &quot;</span>)
+                    );
+
+                    <span class="comment">// TODO: is this correct? and what should we do if announcing the same transaction multiple times? is it cumulative? `Broadcast` isn&#39;t super well documented
+                    </span><span class="kw">if </span>!peers_sent.is_empty() {
+                        worker.pending_transactions
+                            .transaction_user_data_mut(maybe_reannounce_tx_id).unwrap()
+                            .update_status(TransactionStatus::Broadcast(peers_sent));
+                    }
+                },
+
+                maybe_validated_tx_id = worker.validations_in_progress.select_next_some() =&gt; {
+                    <span class="comment">// A transaction validation future has finished. This doesn&#39;t necessarily mean
+                    // that a validation has actually finished. The provided
+                    // `maybe_validated_tx_id` is a hint as to which transaction might have
+                    // finished being validated, but without a strong guarantee.
+
+                    // Try extract the validation result of this transaction, or `continue` if it
+                    // is a false positive.
+                    </span><span class="kw">let </span>(block_hash, validation_result) = <span class="kw">match </span>worker.pending_transactions.transaction_user_data_mut(maybe_validated_tx_id) {
+                        <span class="prelude-val">None </span>=&gt; <span class="kw">continue</span>,  <span class="comment">// Normal. `maybe_validated_tx_id` is just a hint.
+                        </span><span class="prelude-val">Some</span>(tx) =&gt; <span class="kw">match </span>tx.validation_in_progress.as_mut().and_then(|f| f.now_or_never()) {
+                            <span class="prelude-val">None </span>=&gt; <span class="kw">continue</span>,  <span class="comment">// Normal. `maybe_validated_tx_id` is just a hint.
+                            </span><span class="prelude-val">Some</span>(result) =&gt; {
+                                tx.validation_in_progress = <span class="prelude-val">None</span>;
+                                result
+                            },
+                        },
+                    };
+
+                    <span class="kw">let </span>tx_hash = blake2_hash(worker.pending_transactions.scale_encoding(maybe_validated_tx_id).unwrap());
+
+                    <span class="comment">// The validation is made using the runtime service, while the state
+                    // of the chain is tracked using the sync service. As such, it is
+                    // possible for the validation to have been performed against a block
+                    // that has already been finalized and removed from the pool.
+                    </span><span class="kw">if </span>!worker.pending_transactions.has_block(<span class="kw-2">&amp;</span>block_hash) {
+                        <span class="macro">log::debug!</span>(
+                            target: <span class="kw-2">&amp;</span>log_target,
+                            <span class="string">&quot;TxValidations =&gt; ObsoleteBlock(tx={}, block={})&quot;</span>,
+                            HashDisplay(<span class="kw-2">&amp;</span>tx_hash),
+                            HashDisplay(<span class="kw-2">&amp;</span>block_hash)
+                        );
+                        <span class="kw">continue</span>;
+                    }
+
+                    <span class="kw">let </span>validation_result = <span class="kw">match </span>validation_result {
+                        <span class="prelude-val">Ok</span>(result) =&gt; {
+                            <span class="macro">log::debug!</span>(
+                                target: <span class="kw-2">&amp;</span>log_target,
+                                <span class="string">&quot;TxValidations =&gt; Success(tx={}, block={}, priority={}, longevity={}, propagate={:?})&quot;</span>,
+                                HashDisplay(<span class="kw-2">&amp;</span>tx_hash),
+                                HashDisplay(<span class="kw-2">&amp;</span>block_hash),
+                                result.priority,
+                                result.longevity,
+                                result.propagate,
+                            );
+
+                            <span class="macro">log::info!</span>(
+                                target: <span class="kw-2">&amp;</span>log_target,
+                                <span class="string">&quot;Successfully validated transaction {}&quot;</span>,
+                                HashDisplay(<span class="kw-2">&amp;</span>tx_hash)
+                            );
+
+                            <span class="comment">// Schedule this transaction for announcement.
+                            </span>worker.next_reannounce.push(<span class="kw">async move </span>{
+                                maybe_validated_tx_id
+                            }.boxed());
+
+                            <span class="prelude-val">Ok</span>(result)
+                        }
+                        <span class="prelude-val">Err</span>(ValidationError::ObsoleteSubscription) =&gt; {
+                            <span class="comment">// Runtime service subscription is obsolete. Throw away everything and
+                            // rebuild it.
+                            </span><span class="kw">continue </span><span class="lifetime">&#39;channels_rebuild
+                        </span>}
+                        <span class="prelude-val">Err</span>(ValidationError::InvalidOrError(InvalidOrError::Invalid(error))) =&gt; {
+                            <span class="macro">log::debug!</span>(
+                                target: <span class="kw-2">&amp;</span>log_target,
+                                <span class="string">&quot;TxValidations =&gt; Invalid(tx={}, block={}, error={:?})&quot;</span>,
+                                HashDisplay(<span class="kw-2">&amp;</span>tx_hash),
+                                HashDisplay(<span class="kw-2">&amp;</span>block_hash),
+                                error,
+                            );
+
+                            <span class="macro">log::warn!</span>(
+                                target: <span class="kw-2">&amp;</span>log_target,
+                                <span class="string">&quot;Transaction {} invalid against block {}: {}&quot;</span>,
+                                HashDisplay(<span class="kw-2">&amp;</span>tx_hash),
+                                HashDisplay(<span class="kw-2">&amp;</span>block_hash),
+                                error,
+                            );
+
+                            <span class="prelude-val">Err</span>(InvalidOrError::Invalid(error))
+                        }
+                        <span class="prelude-val">Err</span>(ValidationError::InvalidOrError(InvalidOrError::ValidateError(error))) =&gt; {
+                            <span class="macro">log::debug!</span>(
+                                target: <span class="kw-2">&amp;</span>log_target,
+                                <span class="string">&quot;TxValidations =&gt; Error(tx={}, block={}, error={:?})&quot;</span>,
+                                HashDisplay(<span class="kw-2">&amp;</span>tx_hash),
+                                HashDisplay(<span class="kw-2">&amp;</span>block_hash),
+                                error,
+                            );
+
+                            <span class="macro">log::warn!</span>(
+                                target: <span class="kw-2">&amp;</span>log_target,
+                                <span class="string">&quot;Failed to validate transaction {}: {}&quot;</span>,
+                                HashDisplay(<span class="kw-2">&amp;</span>tx_hash),
+                                error
+                            );
+
+                            <span class="prelude-val">Err</span>(InvalidOrError::ValidateError(error))
+                        }
+                    };
+
+                    <span class="comment">// No matter whether the validation is successful, we store the result in
+                    // the transactions pool. This will later be picked up by the code that removes
+                    // invalid transactions from the pool.
+                    </span>worker.pending_transactions
+                        .set_validation_result(maybe_validated_tx_id, <span class="kw-2">&amp;</span>block_hash, validation_result);
+                },
+
+                message = from_foreground.next().fuse() =&gt; {
+                    <span class="kw">let </span>message = <span class="kw">match </span>message {
+                        <span class="prelude-val">Some</span>(msg) =&gt; msg,
+                        <span class="prelude-val">None </span>=&gt; <span class="kw">return</span>,
+                    };
+
+                    <span class="kw">match </span>message {
+                        ToBackground::SubmitTransaction {
+                            transaction_bytes,
+                            updates_report,
+                        } =&gt; {
+                            <span class="comment">// Handle the situation where the same transaction has already been
+                            // submitted in the pool before.
+                            </span><span class="kw">let </span>existing_tx_id = worker.pending_transactions
+                                .find_transaction(<span class="kw-2">&amp;</span>transaction_bytes)
+                                .next();
+                            <span class="kw">if let </span><span class="prelude-val">Some</span>(existing_tx_id) = existing_tx_id {
+                                <span class="kw">let </span>existing_tx = worker.pending_transactions
+                                    .transaction_user_data_mut(existing_tx_id)
+                                    .unwrap();
+                                <span class="kw">if let </span><span class="prelude-val">Some</span>(updates_report) = updates_report {
+                                    existing_tx.add_status_update(updates_report);
+                                }
+                                <span class="kw">continue</span>;
+                            }
+
+                            <span class="comment">// We intentionally limit the number of transactions in the pool,
+                            // and immediately drop new transactions of this limit is reached.
+                            </span><span class="kw">if </span>worker.pending_transactions.num_transactions() &gt;= worker.max_pending_transactions {
+                                <span class="kw">if let </span><span class="prelude-val">Some</span>(<span class="kw-2">mut </span>updates_report) = updates_report {
+                                    <span class="kw">let _ </span>= updates_report.try_send(TransactionStatus::Dropped(DropReason::MaxPendingTransactionsReached));
+                                }
+                                <span class="kw">continue</span>;
+                            }
+
+                            <span class="comment">// Success path. Inserting in pool.
+                            </span>worker
+                                .pending_transactions
+                                .add_unvalidated(transaction_bytes, PendingTransaction {
+                                    when_reannounce: TPlat::now(),
+                                    status_update: {
+                                        <span class="kw">let </span><span class="kw-2">mut </span>vec = Vec::with_capacity(<span class="number">1</span>);
+                                        <span class="kw">if let </span><span class="prelude-val">Some</span>(updates_report) = updates_report {
+                                            vec.push(updates_report);
+                                        }
+                                        vec
+                                    },
+                                    latest_status: <span class="prelude-val">None</span>,
+                                    validation_in_progress: <span class="prelude-val">None</span>,
+                                });
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+<span class="doccomment">/// Background worker running in parallel of the front service.
+</span><span class="kw">struct </span>Worker&lt;TPlat: Platform&gt; {
+    <span class="comment">// How to download the bodies of blocks and synchronize the chain.
+    </span>sync_service: Arc&lt;sync_service::SyncService&lt;TPlat&gt;&gt;,
+
+    <span class="doccomment">/// How to validate transactions.
+    </span>runtime_service: Arc&lt;runtime_service::RuntimeService&lt;TPlat&gt;&gt;,
+
+    <span class="doccomment">/// How to gossip transactions.
+    </span>network_service: Arc&lt;network_service::NetworkService&lt;TPlat&gt;&gt;,
+
+    <span class="doccomment">/// Which chain to use in combination with the [`Worker::network_service`].
+    </span>network_chain_index: usize,
+
+    <span class="doccomment">/// List of pending transactions.
+    ///
+    /// Contains all transactions that were submitted with
+    /// [`TransactionsService::submit_transaction`] and their channel to send back their status.
+    ///
+    /// All the entries in this map represent transactions that we&#39;re trying to include on the
+    /// network. It is normal to find entries where the status report channel is close, as they
+    /// still represent transactions that we&#39;re trying to include but whose status isn&#39;t
+    /// interesting us.
+    ///
+    /// All the blocks within this data structure are also pinned within the runtime service. They
+    /// must be unpinned when they leave the data structure.
+    </span>pending_transactions: light_pool::LightPool&lt;PendingTransaction&lt;TPlat&gt;, Block, InvalidOrError&gt;,
+
+    <span class="doccomment">/// See [`Config::max_pending_transactions`].
+    </span>max_pending_transactions: usize,
+
+    <span class="doccomment">/// List of ongoing block body downloads.
+    /// The output of the future is a block hash and a block body.
+    </span>block_downloads:
+        FuturesUnordered&lt;future::BoxFuture&lt;<span class="lifetime">&#39;static</span>, ([u8; <span class="number">32</span>], <span class="prelude-ty">Result</span>&lt;Vec&lt;Vec&lt;u8&gt;&gt;, ()&gt;)&gt;&gt;,
+
+    <span class="doccomment">/// List of transactions currently being validated.
+    /// Returns the [`light_pool::TransactionId]` of the transaction that has finished being
+    /// validated. The result can then be read from [`PendingTransaction::validation_in_progress`].
+    /// Since transaction IDs can be reused, the returned ID might not correspond to a transaction
+    /// or might correspond to the wrong transaction. This ID being returned is just a hint as to
+    /// which transaction to check, and not an authoritative value.
+    </span>validations_in_progress:
+        FuturesUnordered&lt;future::BoxFuture&lt;<span class="lifetime">&#39;static</span>, light_pool::TransactionId&gt;&gt;,
+
+    <span class="doccomment">/// List of transactions that need to be reannounced.
+    /// Returns the [`light_pool::TransactionId]` of the transaction that needs to be re-announced.
+    /// Since transaction IDs can be reused, the returned ID might not correspond to a transaction
+    /// or might correspond to the wrong transaction. This ID being returned is just a hint as to
+    /// which transaction to check, not an authoritative value, and
+    /// [`PendingTransaction::when_reannounce`] should be checked.
+    </span>next_reannounce: FuturesUnordered&lt;future::BoxFuture&lt;<span class="lifetime">&#39;static</span>, light_pool::TransactionId&gt;&gt;,
+
+    <span class="doccomment">/// See [`Config::max_concurrent_downloads`]. Maximum number of elements in
+    /// [`Worker::block_downloads`].
+    </span>max_concurrent_downloads: usize,
+}
+
+<span class="kw">impl</span>&lt;TPlat: Platform&gt; Worker&lt;TPlat&gt; {
+    <span class="doccomment">/// Update the best block. Must have been previously inserted with
+    /// [`light_pool::LightPool::add_block`].
+    </span><span class="kw">fn </span>set_best_block(<span class="kw-2">&amp;mut </span><span class="self">self</span>, log_target: <span class="kw-2">&amp;</span>str, new_best_block_hash: <span class="kw-2">&amp;</span>[u8; <span class="number">32</span>]) {
+        <span class="kw">let </span>updates = <span class="self">self
+            </span>.pending_transactions
+            .set_best_block(new_best_block_hash);
+
+        <span class="comment">// There might be entries in common between `retracted_transactions` and
+        // `included_transactions`, in the case of a re-org where a transaction is part of both
+        // the old and new best chain.
+        // In that situation we need to first signal `Retracted`, then only `InBlock`.
+        // Consequently, process `retracted_transactions` first.
+
+        </span><span class="macro">log::debug!</span>(
+            target: log_target,
+            <span class="string">&quot;BestChainUpdate(new-best-block={}, included-transactions={{{}}}, retracted-transactions={{{}}})&quot;</span>,
+            HashDisplay(new_best_block_hash),
+            updates.included_transactions.iter()
+                .map(|(id, <span class="kw">_</span>, <span class="kw">_</span>)| HashDisplay(<span class="kw-2">&amp;</span>blake2_hash(<span class="self">self</span>.pending_transactions.scale_encoding(<span class="kw-2">*</span>id).unwrap())).to_string())
+                .join(<span class="string">&quot;, &quot;</span>),
+            updates.retracted_transactions.iter()
+                .map(|(id, <span class="kw">_</span>, <span class="kw">_</span>)| HashDisplay(<span class="kw-2">&amp;</span>blake2_hash(<span class="self">self</span>.pending_transactions.scale_encoding(<span class="kw-2">*</span>id).unwrap())).to_string())
+                .join(<span class="string">&quot;, &quot;</span>)
+        );
+
+        <span class="kw">for </span>(tx_id, <span class="kw">_</span>, <span class="kw">_</span>) <span class="kw">in </span>updates.retracted_transactions {
+            <span class="kw">let </span>tx = <span class="self">self
+                </span>.pending_transactions
+                .transaction_user_data_mut(tx_id)
+                .unwrap();
+            tx.update_status(TransactionStatus::IncludedBlockUpdate { block_hash: <span class="prelude-val">None </span>});
+        }
+
+        <span class="kw">for </span>(tx_id, block_hash, block_body_index) <span class="kw">in </span>updates.included_transactions {
+            <span class="kw">let </span>tx = <span class="self">self
+                </span>.pending_transactions
+                .transaction_user_data_mut(tx_id)
+                .unwrap();
+            <span class="comment">// We assume that there&#39;s no more than 2&lt;&lt;32 transactions per block.
+            </span><span class="kw">let </span>block_body_index = u32::try_from(block_body_index).unwrap();
+            tx.update_status(TransactionStatus::IncludedBlockUpdate {
+                block_hash: <span class="prelude-val">Some</span>((block_hash, block_body_index)),
+            });
+        }
+    }
+}
+
+<span class="kw">struct </span>Block {
+    <span class="doccomment">/// Header of the block, in SCALE encoding. Necessary in order to be able to validate blocks.
+    </span>scale_encoded_header: Vec&lt;u8&gt;,
+
+    <span class="doccomment">/// Number of previous downloads that have failed.
+    </span>failed_downloads: u8,
+
+    <span class="doccomment">/// `True` if the body of this block is currently being downloaded.
+    </span>downloading: bool,
+}
+
+<span class="kw">struct </span>PendingTransaction&lt;TPlat: Platform&gt; {
+    <span class="doccomment">/// Earliest moment when to gossip the transaction on the network again.
+    ///
+    /// This should be interpreted as the moment before which to not reannounce, rather than the
+    /// moment when to announce.
+    ///
+    /// In particular, this value might be long in the past, in case for example of a transaction
+    /// that is not validated.
+    </span>when_reannounce: TPlat::Instant,
+
+    <span class="doccomment">/// List of channels that should receive changes to the transaction status.
+    </span>status_update: Vec&lt;mpsc::Sender&lt;TransactionStatus&gt;&gt;,
+
+    <span class="doccomment">/// Latest known status of the transaction. Used when a new sender is added to
+    /// [`PendingTransaction::status_update`].
+    </span>latest_status: <span class="prelude-ty">Option</span>&lt;TransactionStatus&gt;,
+
+    <span class="doccomment">/// If `Some`, will receive the result of the validation of the transaction.
+    </span>validation_in_progress: <span class="prelude-ty">Option</span>&lt;
+        future::RemoteHandle&lt;(
+            [u8; <span class="number">32</span>],
+            <span class="prelude-ty">Result</span>&lt;validate::ValidTransaction, ValidationError&gt;,
+        )&gt;,
+    &gt;,
+}
+
+<span class="kw">impl</span>&lt;TPlat: Platform&gt; PendingTransaction&lt;TPlat&gt; {
+    <span class="kw">fn </span>add_status_update(<span class="kw-2">&amp;mut </span><span class="self">self</span>, <span class="kw-2">mut </span>channel: mpsc::Sender&lt;TransactionStatus&gt;) {
+        <span class="kw">if let </span><span class="prelude-val">Some</span>(latest_status) = <span class="kw-2">&amp;</span><span class="self">self</span>.latest_status {
+            <span class="kw">if </span>channel.try_send(latest_status.clone()).is_err() {
+                <span class="kw">return</span>;
+            }
+        }
+
+        <span class="self">self</span>.status_update.push(channel);
+    }
+
+    <span class="kw">fn </span>update_status(<span class="kw-2">&amp;mut </span><span class="self">self</span>, status: TransactionStatus) {
+        <span class="kw">for </span>n <span class="kw">in </span><span class="number">0</span>..<span class="self">self</span>.status_update.len() {
+            <span class="kw">let </span><span class="kw-2">mut </span>channel = <span class="self">self</span>.status_update.swap_remove(n);
+            <span class="kw">if </span>channel.try_send(status.clone()).is_ok() {
+                <span class="self">self</span>.status_update.push(channel);
+            }
+        }
+
+        <span class="self">self</span>.latest_status = <span class="prelude-val">Some</span>(status);
+    }
+}
+
+<span class="doccomment">/// Actual transaction validation logic. Validates the transaction against the given block of the
+/// [`runtime_service::RuntimeService`].
+///
+/// Returns the result of the validation, and the hash of the block it was validated against.
+</span><span class="kw">async fn </span>validate_transaction&lt;TPlat: Platform&gt;(
+    log_target: <span class="kw-2">&amp;</span>str,
+    relay_chain_sync: <span class="kw-2">&amp;</span>Arc&lt;runtime_service::RuntimeService&lt;TPlat&gt;&gt;,
+    relay_chain_sync_subscription_id: runtime_service::SubscriptionId,
+    block_hash: [u8; <span class="number">32</span>],
+    block_scale_encoded_header: <span class="kw-2">&amp;</span>[u8],
+    scale_encoded_transaction: <span class="kw">impl </span>AsRef&lt;[u8]&gt; + Clone,
+    source: validate::TransactionSource,
+) -&gt; <span class="prelude-ty">Result</span>&lt;validate::ValidTransaction, ValidationError&gt; {
+    <span class="kw">let </span>runtime_lock = <span class="kw">match </span>relay_chain_sync
+        .pinned_block_runtime_lock(relay_chain_sync_subscription_id, <span class="kw-2">&amp;</span>block_hash)
+        .<span class="kw">await
+    </span>{
+        <span class="prelude-val">Ok</span>(l) =&gt; l,
+        <span class="prelude-val">Err</span>(runtime_service::PinnedBlockRuntimeLockError::ObsoleteSubscription) =&gt; {
+            <span class="kw">return </span><span class="prelude-val">Err</span>(ValidationError::ObsoleteSubscription)
+        }
+    };
+
+    <span class="macro">log::debug!</span>(
+        target: log_target,
+        <span class="string">&quot;TxValidations &lt;= Start(tx={}, block={}, block_height={})&quot;</span>,
+        HashDisplay(<span class="kw-2">&amp;</span>blake2_hash(scale_encoded_transaction.as_ref())),
+        HashDisplay(runtime_lock.block_hash()),
+        header::decode(
+            block_scale_encoded_header,
+            relay_chain_sync.block_number_bytes()
+        )
+        .ok()
+        .map(|h| <span class="macro">format!</span>(<span class="string">&quot;#{}&quot;</span>, h.number))
+        .unwrap_or_else(|| <span class="string">&quot;unknown&quot;</span>.to_owned())
+    );
+
+    <span class="kw">let </span>block_hash = <span class="kw-2">*</span>runtime_lock.block_hash();
+    <span class="kw">let </span>(runtime_call_lock, runtime) = runtime_lock
+        .start(
+            validate::VALIDATION_FUNCTION_NAME,
+            <span class="comment">// TODO: don&#39;t hardcode v3 but determine parameters dynamically from the runtime
+            </span>validate::validate_transaction_runtime_parameters_v3(
+                iter::once(scale_encoded_transaction.as_ref()),
+                source,
+                <span class="kw-2">&amp;</span>block_hash,
+            ),
+            <span class="number">1</span>,
+            Duration::from_secs(<span class="number">8</span>),
+            NonZeroU32::new(<span class="number">1</span>).unwrap(),
+        )
+        .<span class="kw">await
+        </span>.map_err(ValidateTransactionError::Call)
+        .map_err(InvalidOrError::ValidateError)
+        .map_err(ValidationError::InvalidOrError)<span class="question-mark">?</span>;
+
+    <span class="kw">let </span><span class="kw-2">mut </span>validation_in_progress = validate::validate_transaction(validate::Config {
+        runtime,
+        scale_encoded_header: block_scale_encoded_header,
+        block_number_bytes: relay_chain_sync.block_number_bytes(),
+        scale_encoded_transaction: iter::once(scale_encoded_transaction),
+        source,
+    });
+
+    <span class="kw">loop </span>{
+        <span class="kw">match </span>validation_in_progress {
+            validate::Query::Finished {
+                result: <span class="prelude-val">Ok</span>(<span class="prelude-val">Ok</span>(success)),
+                virtual_machine,
+            } =&gt; {
+                runtime_call_lock.unlock(virtual_machine);
+                <span class="kw">break </span><span class="prelude-val">Ok</span>(success);
+            }
+            validate::Query::Finished {
+                result: <span class="prelude-val">Ok</span>(<span class="prelude-val">Err</span>(invalid)),
+                virtual_machine,
+            } =&gt; {
+                runtime_call_lock.unlock(virtual_machine);
+                <span class="kw">break </span><span class="prelude-val">Err</span>(ValidationError::InvalidOrError(InvalidOrError::Invalid(
+                    invalid,
+                )));
+            }
+            validate::Query::Finished {
+                result: <span class="prelude-val">Err</span>(error),
+                virtual_machine,
+            } =&gt; {
+                runtime_call_lock.unlock(virtual_machine);
+                <span class="kw">break </span><span class="prelude-val">Err</span>(ValidationError::InvalidOrError(
+                    InvalidOrError::ValidateError(ValidateTransactionError::Validation(error)),
+                ));
+            }
+            validate::Query::StorageGet(get) =&gt; {
+                <span class="kw">let </span>storage_value = runtime_call_lock.storage_entry(get.key().as_ref());
+                <span class="kw">let </span>storage_value = <span class="kw">match </span>storage_value {
+                    <span class="prelude-val">Ok</span>(v) =&gt; v,
+                    <span class="prelude-val">Err</span>(err) =&gt; {
+                        runtime_call_lock.unlock(validate::Query::StorageGet(get).into_prototype());
+                        <span class="kw">return </span><span class="prelude-val">Err</span>(ValidationError::InvalidOrError(
+                            InvalidOrError::ValidateError(ValidateTransactionError::Call(err)),
+                        ));
+                    }
+                };
+                validation_in_progress = get.inject_value(storage_value.map(iter::once));
+            }
+            validate::Query::NextKey(nk) =&gt; {
+                <span class="comment">// TODO:
+                </span>runtime_call_lock.unlock(validate::Query::NextKey(nk).into_prototype());
+                <span class="kw">break </span><span class="prelude-val">Err</span>(ValidationError::InvalidOrError(
+                    InvalidOrError::ValidateError(ValidateTransactionError::NextKeyForbidden),
+                ));
+            }
+            validate::Query::PrefixKeys(prefix) =&gt; {
+                <span class="comment">// TODO: lots of allocations because I couldn&#39;t figure how to make this annoying borrow checker happy
+                </span><span class="kw">let </span>rq_prefix = prefix.prefix().as_ref().to_owned();
+                <span class="kw">let </span>result = runtime_call_lock
+                    .storage_prefix_keys_ordered(<span class="kw-2">&amp;</span>rq_prefix)
+                    .map(|i| i.map(|v| v.as_ref().to_owned()).collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;());
+                <span class="kw">match </span>result {
+                    <span class="prelude-val">Ok</span>(v) =&gt; validation_in_progress = prefix.inject_keys_ordered(v.into_iter()),
+                    <span class="prelude-val">Err</span>(err) =&gt; {
+                        runtime_call_lock
+                            .unlock(validate::Query::PrefixKeys(prefix).into_prototype());
+                        <span class="kw">return </span><span class="prelude-val">Err</span>(ValidationError::InvalidOrError(
+                            InvalidOrError::ValidateError(ValidateTransactionError::Call(err)),
+                        ));
+                    }
+                }
+            }
+        }
+    }
+}
+
+<span class="doccomment">/// Utility. Calculates the BLAKE2 hash of the given bytes.
+</span><span class="kw">fn </span>blake2_hash(bytes: <span class="kw-2">&amp;</span>[u8]) -&gt; [u8; <span class="number">32</span>] {
+    &lt;[u8; <span class="number">32</span>]&gt;::try_from(blake2_rfc::blake2b::blake2b(<span class="number">32</span>, <span class="kw-2">&amp;</span>[], bytes).as_bytes()).unwrap()
+}
+</code></pre></div>
+</section></div></main><div id="rustdoc-vars" data-root-path="../../" data-current-crate="smoldot_light" data-themes="ayu,dark,light" data-resource-suffix="" data-rustdoc-version="1.65.0 (897e37553 2022-11-02)" ></div></body></html>
